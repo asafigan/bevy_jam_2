@@ -31,7 +31,8 @@ impl Plugin for BoardPlugin {
             .add_system_set(
                 SystemSet::on_update(BoardState::Moving)
                     .with_system(move_gem)
-                    .with_system(drop_gem),
+                    .with_system(drop_gem)
+                    .with_system(swap_gems),
             )
             .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems));
     }
@@ -112,13 +113,13 @@ fn update_world_cursors(
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct TileEvent {
     tile: Entity,
     info: TileEventInfo,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TileEventInfo {
     Entered,
     Exited,
@@ -128,36 +129,29 @@ fn track_tile_hover(
     mut tiles: Query<(Entity, &mut Tile, &GlobalTransform)>,
     mut events: EventWriter<TileEvent>,
     cursors: Query<&WorldCursor>,
-    state: Res<State<BoardState>>,
 ) {
-    if state.current() == &BoardState::Waiting {
-        let cursor = cursors.single();
+    let cursor = cursors.single();
 
-        for (entity, mut tile, transform) in &mut tiles {
-            let mouse_in = if let Some(position) = cursor.position {
-                let matrix = transform.compute_matrix().inverse();
-                let position = matrix.transform_point3(position.extend(0.0)).truncate();
+    for (entity, mut tile, transform) in &mut tiles {
+        let mouse_in = if let Some(position) = cursor.position {
+            let matrix = transform.compute_matrix().inverse();
+            let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
-                position.max_element() < 0.5 && position.min_element() > -0.5
-            } else {
-                false
-            };
+            position.max_element() < 0.5 && position.min_element() > -0.5
+        } else {
+            false
+        };
 
-            if tile.mouse_in != mouse_in {
-                tile.mouse_in = mouse_in;
-
-                if mouse_in {
-                    events.send(TileEvent {
-                        tile: entity,
-                        info: TileEventInfo::Entered,
-                    });
+        if tile.mouse_in != mouse_in {
+            tile.mouse_in = mouse_in;
+            events.send(TileEvent {
+                tile: entity,
+                info: if mouse_in {
+                    TileEventInfo::Entered
                 } else {
-                    events.send(TileEvent {
-                        tile: entity,
-                        info: TileEventInfo::Exited,
-                    });
-                }
-            }
+                    TileEventInfo::Exited
+                },
+            });
         }
     }
 }
@@ -192,11 +186,14 @@ fn change_gem_material(
     }
 }
 
-struct Moving(pub Entity);
+struct Moving {
+    gem: Entity,
+    current_tile: Entity,
+}
 
 fn pickup_gem(
     mut events: EventReader<MouseButtonInput>,
-    tiles: Query<&Tile>,
+    tiles: Query<(Entity, &Tile)>,
     mut commands: Commands,
     mut state: ResMut<State<BoardState>>,
 ) {
@@ -206,11 +203,40 @@ fn pickup_gem(
         .fold(false, |_, current| current.state == ButtonState::Pressed);
 
     if start_pickup {
-        for tile in &tiles {
+        for (entity, tile) in &tiles {
             if tile.mouse_in {
-                commands.insert_resource(Moving(tile.gem));
+                commands.insert_resource(Moving {
+                    gem: tile.gem,
+                    current_tile: entity,
+                });
                 state.replace(BoardState::Moving).unwrap();
             }
+        }
+    }
+}
+
+fn swap_gems(
+    mut moving: ResMut<Moving>,
+    mut events: EventReader<TileEvent>,
+    mut tiles: Query<(&mut Tile, &Transform), Without<Gem>>,
+    mut gems: Query<&mut Transform, With<Gem>>,
+) {
+    for event in events.iter() {
+        if event.info == TileEventInfo::Entered {
+            let (mut tile, _) = tiles.get_mut(event.tile).unwrap();
+
+            let previous_gem = tile.gem;
+            tile.gem = moving.gem;
+
+            let (mut tile, transform) = tiles.get_mut(moving.current_tile).unwrap();
+
+            tile.gem = previous_gem;
+
+            let mut gem_transform = gems.get_mut(previous_gem).unwrap();
+
+            gem_transform.translation = transform.translation.truncate().extend(1.0);
+
+            moving.current_tile = event.tile;
         }
     }
 }
@@ -242,7 +268,7 @@ fn move_gem(
     cursors: Query<&WorldCursor>,
 ) {
     if let Some(position) = cursors.single().position {
-        let mut gem_transform = gems.get_mut(moving.0).unwrap();
+        let mut gem_transform = gems.get_mut(moving.gem).unwrap();
         *gem_transform.translation_mut() = position.extend(2.0).into();
     }
 }
