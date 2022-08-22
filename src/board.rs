@@ -6,6 +6,7 @@ use bevy::{
         *,
     },
     reflect::TypeUuid,
+    render::camera::RenderTarget,
 };
 
 pub struct BoardPlugin;
@@ -14,7 +15,8 @@ impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(add_meshes)
             .add_startup_system(add_materials)
-            .add_system(hover_tile);
+            .add_system(hover_tile)
+            .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors);
     }
 }
 
@@ -53,38 +55,54 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     materials.set_untracked(TilePrefab::material_handle(), default());
 }
 
+#[derive(Component, Default)]
+pub struct WorldCursor {
+    pub position: Option<Vec2>,
+}
+
+fn update_world_cursors(
+    windows: Res<Windows>,
+    mut cameras: Query<(&Camera, &GlobalTransform, &mut WorldCursor)>,
+) {
+    for (camera, camera_transform, mut cursor) in &mut cameras {
+        cursor.position = if let RenderTarget::Window(id) = camera.target {
+            windows.get(id).and_then(|window| {
+                let window_size = Vec2::new(window.width(), window.height());
+                let cursor_position = window.cursor_position()?;
+
+                // convert screen position [0..resolution] to ndc [-1..1] (gpu coordinates)
+                let ndc = (cursor_position / window_size) * 2.0 - Vec2::ONE;
+
+                // matrix for undoing the projection and camera transform
+                let ndc_to_world =
+                    camera_transform.compute_matrix() * camera.projection_matrix().inverse();
+
+                // use it to convert ndc to world-space coordinates
+                let world_pos = ndc_to_world.project_point3(ndc.extend(-1.0));
+
+                // reduce it to a 2D value
+                Some(world_pos.truncate())
+            })
+        } else {
+            None
+        }
+    }
+}
+
 fn hover_tile(
     mut materials: ResMut<Assets<StandardMaterial>>,
-    windows: Res<Windows>,
     mut tiles: Query<(&Tile, &GlobalTransform)>,
     mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
-    cameras: Query<(&Camera, &GlobalTransform)>,
+    cursors: Query<&WorldCursor>,
 ) {
-    let window = windows.primary();
-    let (camera, camera_transform) = cameras.single();
-    if let Some(mut cursor_position) = window.cursor_position() {
-        let window_size = Vec2::new(window.width(), window.height());
+    let cursor = cursors.single();
 
-        // convert screen position [0..resolution] to ndc [-1..1] (gpu coordinates)
-        let ndc = (cursor_position / window_size) * 2.0 - Vec2::ONE;
-
-        // matrix for undoing the projection and camera transform
-        let ndc_to_world = camera_transform.compute_matrix() * camera.projection_matrix().inverse();
-
-        // use it to convert ndc to world-space coordinates
-        let world_pos = ndc_to_world.project_point3(ndc.extend(-1.0));
-
-        // reduce it to a 2D value
-        cursor_position = world_pos.truncate();
-
-        for (tile, transform) in &mut tiles {
+    for (tile, transform) in &mut tiles {
+        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+        if let Some(position) = cursor.position {
             let matrix = transform.compute_matrix().inverse();
 
-            let position = matrix
-                .transform_point3(cursor_position.extend(0.0))
-                .truncate();
-
-            let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+            let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
             if position.max_element() < 0.5 && position.min_element() > -0.5 {
                 *material = materials.add(StandardMaterial {
@@ -95,6 +113,8 @@ fn hover_tile(
             } else {
                 *material = gem.element.material_handle();
             }
+        } else {
+            *material = gem.element.material_handle();
         }
     }
 }
