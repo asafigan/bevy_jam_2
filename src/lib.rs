@@ -8,9 +8,13 @@ mod prefab;
 pub fn build_app() -> App {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins)
-        .add_plugin(board::BoardPlugin)
-        .add_startup_system(setup);
+    app.insert_resource(WindowDescriptor {
+        present_mode: bevy::window::PresentMode::Immediate,
+        ..Default::default()
+    })
+    .add_plugins(DefaultPlugins)
+    .add_plugin(board::BoardPlugin)
+    .add_startup_system(setup);
 
     app
 }
@@ -32,7 +36,7 @@ fn setup(mut commands: Commands) {
     spawn(
         BoardPrefab {
             gems: BoardPrefab::random_gems(),
-            transform: Transform::from_scale(Vec3::splat(0.4)),
+            transform: Transform::from_scale(Vec3::splat(0.5)),
         },
         &mut commands,
     );

@@ -52,6 +52,14 @@ pub enum Element {
     Electric,
 }
 
+impl Element {
+    fn random() -> Element {
+        let rng = fastrand::Rng::new();
+
+        rng.u8(..6).try_into().unwrap()
+    }
+}
+
 impl TryFrom<u8> for Element {
     type Error = u8;
 
@@ -139,10 +147,9 @@ pub struct BoardPrefab {
 impl BoardPrefab {
     pub fn random_gems() -> [[Element; 5]; 6] {
         let mut gems = [[Element::Life; 5]; 6];
-        let rng = fastrand::Rng::new();
         for column in &mut gems {
             for gem in column {
-                *gem = rng.u8(..6).try_into().unwrap();
+                *gem = Element::random();
             }
         }
 
@@ -154,17 +161,17 @@ impl Prefab for BoardPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let mut children = Vec::new();
 
+        let middle = Vec3::new(6.0 / 2.0, 5.0 / 2.0, 0.0);
+
         for x in 0..6 {
             for y in 0..5 {
                 let child = commands.spawn().id();
 
-                const PADDING: f32 = 0.2;
-
+                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
                 GemPrefab {
                     element: self.gems[x][y],
-                    transform: Transform::from_translation(
-                        Vec3::new(x as f32, y as f32, 0.0) * (1.0 + PADDING),
-                    ),
+                    transform: Transform::from_translation(offset - middle)
+                        .with_scale(Vec3::splat(0.8)),
                 }
                 .construct(child, commands);
 
