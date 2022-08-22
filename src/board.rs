@@ -8,6 +8,7 @@ use bevy::{
     },
     reflect::TypeUuid,
     render::camera::RenderTarget,
+    utils::HashSet,
 };
 
 pub struct BoardPlugin;
@@ -17,17 +18,14 @@ impl Plugin for BoardPlugin {
         app.add_event::<TileEvent>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
+            .add_system(change_gem_material)
             .add_state(BoardState::Waiting)
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_to_stage(
                 CoreStage::PreUpdate,
                 track_tile_hover.after(update_world_cursors),
             )
-            .add_system_set(
-                SystemSet::on_update(BoardState::Waiting)
-                    .with_system(change_gem_material)
-                    .with_system(pickup_gem),
-            )
+            .add_system_set(SystemSet::on_update(BoardState::Waiting).with_system(pickup_gem))
             .add_system_set(
                 SystemSet::on_update(BoardState::Moving)
                     .with_system(move_gem)
@@ -157,31 +155,30 @@ fn track_tile_hover(
 }
 
 fn change_gem_material(
-    mut event_store: Local<Vec<TileEvent>>,
+    mut updated: Local<HashSet<Entity>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut events: EventReader<TileEvent>,
     tiles: Query<&Tile>,
     mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
     state: Res<State<BoardState>>,
 ) {
+    for event in events.iter() {
+        updated.insert(event.tile);
+    }
+
     if state.current() == &BoardState::Waiting {
-        for event in events.iter().chain(&*event_store) {
-            let tile = tiles.get(event.tile).unwrap();
+        for entity in updated.drain() {
+            let tile = tiles.get(entity).unwrap();
             let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
-            *material = match event.info {
-                TileEventInfo::Entered => materials.add(StandardMaterial {
+            *material = if tile.mouse_in {
+                materials.add(StandardMaterial {
                     base_color: gem.element.color(),
                     emissive: gem.element.color(),
                     ..default()
-                }),
-                TileEventInfo::Exited => gem.element.material_handle(),
+                })
+            } else {
+                gem.element.material_handle()
             };
-        }
-
-        event_store.clear();
-    } else {
-        for event in events.iter() {
-            event_store.push(event.clone());
         }
     }
 }
