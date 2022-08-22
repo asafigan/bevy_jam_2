@@ -1,6 +1,7 @@
 use crate::prefab::*;
 use bevy::{
     asset::HandleId,
+    input::{mouse::MouseButtonInput, ButtonState},
     prelude::{
         shape::{Icosphere, RegularPolygon},
         *,
@@ -15,16 +16,33 @@ impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(add_meshes)
             .add_startup_system(add_materials)
-            .add_system(hover_tile)
-            .add_system(unhover_tile)
+            .add_state(BoardState::Waiting)
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_set_to_stage(
                 CoreStage::PreUpdate,
                 SystemSet::new()
                     .after(update_world_cursors)
                     .with_system(update_tile_hover),
-            );
+            )
+            .add_system_set(
+                SystemSet::on_update(BoardState::Waiting)
+                    .with_system(hover_tile)
+                    .with_system(unhover_tile)
+                    .with_system(pickup_gem),
+            )
+            .add_system_set(
+                SystemSet::on_update(BoardState::Moving)
+                    .with_system(move_gem)
+                    .with_system(drop_gem),
+            )
+            .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems));
     }
+}
+
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+enum BoardState {
+    Waiting,
+    Moving,
 }
 
 fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
@@ -103,22 +121,25 @@ fn update_tile_hover(
     mut commands: Commands,
     tiles: Query<(Entity, &GlobalTransform), With<Tile>>,
     cursors: Query<&WorldCursor>,
+    state: Res<State<BoardState>>,
 ) {
-    let cursor = cursors.single();
+    if state.current() == &BoardState::Waiting {
+        let cursor = cursors.single();
 
-    for (entity, transform) in &tiles {
-        let mut entity = commands.entity(entity);
-        if let Some(position) = cursor.position {
-            let matrix = transform.compute_matrix().inverse();
-            let position = matrix.transform_point3(position.extend(0.0)).truncate();
+        for (entity, transform) in &tiles {
+            let mut entity = commands.entity(entity);
+            if let Some(position) = cursor.position {
+                let matrix = transform.compute_matrix().inverse();
+                let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
-            if position.max_element() < 0.5 && position.min_element() > -0.5 {
-                entity.insert(Hovered);
+                if position.max_element() < 0.5 && position.min_element() > -0.5 {
+                    entity.insert(Hovered);
+                } else {
+                    entity.remove::<Hovered>();
+                }
             } else {
                 entity.remove::<Hovered>();
             }
-        } else {
-            entity.remove::<Hovered>();
         }
     }
 }
@@ -146,6 +167,59 @@ fn unhover_tile(
     for tile in removed_hover.iter().filter_map(|x| tiles.get(x).ok()) {
         let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
         *material = gem.element.material_handle();
+    }
+}
+
+struct Moving(pub Entity);
+
+fn pickup_gem(
+    mut events: EventReader<MouseButtonInput>,
+    hovered_tiles: Query<&Tile, With<Hovered>>,
+    mut commands: Commands,
+    mut state: ResMut<State<BoardState>>,
+) {
+    let start_pickup = events
+        .iter()
+        .filter(|e| e.button == MouseButton::Left)
+        .fold(false, |_, current| current.state == ButtonState::Pressed);
+
+    if start_pickup {
+        if let Ok(tile) = hovered_tiles.get_single() {
+            commands.insert_resource(Moving(tile.gem));
+            state.replace(BoardState::Moving).unwrap();
+        }
+    }
+}
+
+fn drop_gem(mut events: EventReader<MouseButtonInput>, mut state: ResMut<State<BoardState>>) {
+    let drop = events
+        .iter()
+        .filter(|e| e.button == MouseButton::Left)
+        .fold(false, |_, current| current.state == ButtonState::Released);
+
+    if drop {
+        state.replace(BoardState::Waiting).unwrap();
+    }
+}
+
+fn return_gems(
+    mut gems: Query<&mut Transform, (Without<Tile>, With<Gem>)>,
+    tiles: Query<(&Tile, &Transform)>,
+) {
+    for (tile, transform) in &tiles {
+        let mut gem = gems.get_mut(tile.gem).unwrap();
+        gem.translation = transform.translation.truncate().extend(1.0);
+    }
+}
+
+fn move_gem(
+    moving: Res<Moving>,
+    mut gems: Query<&mut GlobalTransform, With<Gem>>,
+    cursors: Query<&WorldCursor>,
+) {
+    if let Some(position) = cursors.single().position {
+        let mut gem_transform = gems.get_mut(moving.0).unwrap();
+        *gem_transform.translation_mut() = position.extend(2.0).into();
     }
 }
 
