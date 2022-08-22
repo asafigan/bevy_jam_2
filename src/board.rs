@@ -14,20 +14,18 @@ pub struct BoardPlugin;
 
 impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(add_meshes)
+        app.add_event::<TileEvent>()
+            .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_state(BoardState::Waiting)
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
-            .add_system_set_to_stage(
+            .add_system_to_stage(
                 CoreStage::PreUpdate,
-                SystemSet::new()
-                    .after(update_world_cursors)
-                    .with_system(update_tile_hover),
+                track_tile_hover.after(update_world_cursors),
             )
             .add_system_set(
                 SystemSet::on_update(BoardState::Waiting)
-                    .with_system(hover_tile)
-                    .with_system(unhover_tile)
+                    .with_system(change_gem_material)
                     .with_system(pickup_gem),
             )
             .add_system_set(
@@ -114,59 +112,83 @@ fn update_world_cursors(
     }
 }
 
-#[derive(Component)]
-struct Hovered;
+#[derive(Clone)]
+struct TileEvent {
+    tile: Entity,
+    info: TileEventInfo,
+}
 
-fn update_tile_hover(
-    mut commands: Commands,
-    tiles: Query<(Entity, &GlobalTransform), With<Tile>>,
+#[derive(Clone)]
+enum TileEventInfo {
+    Entered,
+    Exited,
+}
+
+fn track_tile_hover(
+    mut tiles: Query<(Entity, &mut Tile, &GlobalTransform)>,
+    mut events: EventWriter<TileEvent>,
     cursors: Query<&WorldCursor>,
     state: Res<State<BoardState>>,
 ) {
     if state.current() == &BoardState::Waiting {
         let cursor = cursors.single();
 
-        for (entity, transform) in &tiles {
-            let mut entity = commands.entity(entity);
-            if let Some(position) = cursor.position {
+        for (entity, mut tile, transform) in &mut tiles {
+            let mouse_in = if let Some(position) = cursor.position {
                 let matrix = transform.compute_matrix().inverse();
                 let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
-                if position.max_element() < 0.5 && position.min_element() > -0.5 {
-                    entity.insert(Hovered);
-                } else {
-                    entity.remove::<Hovered>();
-                }
+                position.max_element() < 0.5 && position.min_element() > -0.5
             } else {
-                entity.remove::<Hovered>();
+                false
+            };
+
+            if tile.mouse_in != mouse_in {
+                tile.mouse_in = mouse_in;
+
+                if mouse_in {
+                    events.send(TileEvent {
+                        tile: entity,
+                        info: TileEventInfo::Entered,
+                    });
+                } else {
+                    events.send(TileEvent {
+                        tile: entity,
+                        info: TileEventInfo::Exited,
+                    });
+                }
             }
         }
     }
 }
 
-fn hover_tile(
+fn change_gem_material(
+    mut event_store: Local<Vec<TileEvent>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    tiles: Query<&Tile, Added<Hovered>>,
-    mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
-) {
-    for tile in &tiles {
-        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
-        *material = materials.add(StandardMaterial {
-            base_color: gem.element.color(),
-            emissive: gem.element.color(),
-            ..default()
-        });
-    }
-}
-
-fn unhover_tile(
-    removed_hover: RemovedComponents<Hovered>,
+    mut events: EventReader<TileEvent>,
     tiles: Query<&Tile>,
     mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
+    state: Res<State<BoardState>>,
 ) {
-    for tile in removed_hover.iter().filter_map(|x| tiles.get(x).ok()) {
-        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
-        *material = gem.element.material_handle();
+    if state.current() == &BoardState::Waiting {
+        for event in events.iter().chain(&*event_store) {
+            let tile = tiles.get(event.tile).unwrap();
+            let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+            *material = match event.info {
+                TileEventInfo::Entered => materials.add(StandardMaterial {
+                    base_color: gem.element.color(),
+                    emissive: gem.element.color(),
+                    ..default()
+                }),
+                TileEventInfo::Exited => gem.element.material_handle(),
+            };
+        }
+
+        event_store.clear();
+    } else {
+        for event in events.iter() {
+            event_store.push(event.clone());
+        }
     }
 }
 
@@ -174,7 +196,7 @@ struct Moving(pub Entity);
 
 fn pickup_gem(
     mut events: EventReader<MouseButtonInput>,
-    hovered_tiles: Query<&Tile, With<Hovered>>,
+    tiles: Query<&Tile>,
     mut commands: Commands,
     mut state: ResMut<State<BoardState>>,
 ) {
@@ -184,9 +206,11 @@ fn pickup_gem(
         .fold(false, |_, current| current.state == ButtonState::Pressed);
 
     if start_pickup {
-        if let Ok(tile) = hovered_tiles.get_single() {
-            commands.insert_resource(Moving(tile.gem));
-            state.replace(BoardState::Moving).unwrap();
+        for tile in &tiles {
+            if tile.mouse_in {
+                commands.insert_resource(Moving(tile.gem));
+                state.replace(BoardState::Moving).unwrap();
+            }
         }
     }
 }
@@ -380,6 +404,7 @@ impl Prefab for BoardPrefab {
 
 #[derive(Component)]
 pub struct Tile {
+    pub mouse_in: bool,
     pub gem: Entity,
     pub mesh: Entity,
 }
@@ -417,6 +442,7 @@ impl Prefab for TilePrefab {
                 ..default()
             })
             .insert(Tile {
+                mouse_in: false,
                 gem: self.gem,
                 mesh,
             })
