@@ -254,12 +254,12 @@ fn drop_gem(mut events: EventReader<MouseButtonInput>, mut state: ResMut<State<B
 
 fn return_gems(
     mut gems: Query<&mut Transform, (Without<Tile>, With<Gem>)>,
-    tiles: Query<(&Tile, &Transform)>,
+    tiles: Query<&Transform, With<Tile>>,
+    moving: Res<Moving>,
 ) {
-    for (tile, transform) in &tiles {
-        let mut gem = gems.get_mut(tile.gem).unwrap();
-        gem.translation = transform.translation.truncate().extend(1.0);
-    }
+    let transform = tiles.get(moving.current_tile).unwrap();
+    let mut gem = gems.get_mut(moving.gem).unwrap();
+    gem.translation = transform.translation.truncate().extend(1.0);
 }
 
 fn move_gem(
