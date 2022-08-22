@@ -12,6 +12,10 @@ pub fn build_app() -> App {
         present_mode: bevy::window::PresentMode::Immediate,
         ..Default::default()
     })
+    .insert_resource(AmbientLight {
+        brightness: 0.5,
+        ..default()
+    })
     .add_plugins(DefaultPlugins)
     .add_plugin(board::BoardPlugin)
     .add_startup_system(setup);
