@@ -187,6 +187,7 @@ fn change_gem_material(
 }
 
 struct Moving {
+    swaps: u32,
     gem: Entity,
     current_tile: Entity,
 }
@@ -206,6 +207,7 @@ fn pickup_gem(
         for (entity, tile) in &tiles {
             if tile.mouse_in {
                 commands.insert_resource(Moving {
+                    swaps: 0,
                     gem: tile.gem,
                     current_tile: entity,
                 });
@@ -237,6 +239,7 @@ fn swap_gems(
             gem_transform.translation = transform.translation.truncate().extend(1.0);
 
             moving.current_tile = event.tile;
+            moving.swaps += 1;
         }
     }
 }
