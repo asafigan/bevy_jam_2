@@ -16,7 +16,14 @@ impl Plugin for BoardPlugin {
         app.add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(hover_tile)
-            .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors);
+            .add_system(unhover_tile)
+            .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
+            .add_system_set_to_stage(
+                CoreStage::PreUpdate,
+                SystemSet::new()
+                    .after(update_world_cursors)
+                    .with_system(update_tile_hover),
+            );
     }
 }
 
@@ -89,33 +96,56 @@ fn update_world_cursors(
     }
 }
 
-fn hover_tile(
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut tiles: Query<(&Tile, &GlobalTransform)>,
-    mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
+#[derive(Component)]
+struct Hovered;
+
+fn update_tile_hover(
+    mut commands: Commands,
+    tiles: Query<(Entity, &GlobalTransform), With<Tile>>,
     cursors: Query<&WorldCursor>,
 ) {
     let cursor = cursors.single();
 
-    for (tile, transform) in &mut tiles {
-        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+    for (entity, transform) in &tiles {
+        let mut entity = commands.entity(entity);
         if let Some(position) = cursor.position {
             let matrix = transform.compute_matrix().inverse();
-
             let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
             if position.max_element() < 0.5 && position.min_element() > -0.5 {
-                *material = materials.add(StandardMaterial {
-                    base_color: gem.element.color(),
-                    emissive: gem.element.color(),
-                    ..default()
-                });
+                entity.insert(Hovered);
             } else {
-                *material = gem.element.material_handle();
+                entity.remove::<Hovered>();
             }
         } else {
-            *material = gem.element.material_handle();
+            entity.remove::<Hovered>();
         }
+    }
+}
+
+fn hover_tile(
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    tiles: Query<&Tile, Added<Hovered>>,
+    mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
+) {
+    for tile in &tiles {
+        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+        *material = materials.add(StandardMaterial {
+            base_color: gem.element.color(),
+            emissive: gem.element.color(),
+            ..default()
+        });
+    }
+}
+
+fn unhover_tile(
+    removed_hover: RemovedComponents<Hovered>,
+    tiles: Query<&Tile>,
+    mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
+) {
+    for tile in removed_hover.iter().filter_map(|x| tiles.get(x).ok()) {
+        let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+        *material = gem.element.material_handle();
     }
 }
 
