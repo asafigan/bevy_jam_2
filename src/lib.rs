@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, render::camera::ScalingMode};
 use board::BoardPrefab;
 use prefab::spawn;
 
@@ -21,6 +21,12 @@ pub fn build_app() -> App {
 
 fn setup(mut commands: Commands) {
     commands.spawn_bundle(Camera3dBundle {
+        projection: OrthographicProjection {
+            scale: 3.0,
+            scaling_mode: ScalingMode::FixedVertical(2.0),
+            ..default()
+        }
+        .into(),
         transform: Transform::from_translation(Vec3::Z * 10.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     });

@@ -1,7 +1,10 @@
 use crate::prefab::*;
 use bevy::{
     asset::HandleId,
-    prelude::{shape::Icosphere, *},
+    prelude::{
+        shape::{Icosphere, RegularPolygon},
+        *,
+    },
     reflect::TypeUuid,
 };
 
@@ -27,6 +30,15 @@ fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
         }
         .into(),
     );
+
+    meshes.set_untracked(
+        TilePrefab::mesh_handle(),
+        RegularPolygon {
+            radius: f32::sqrt(0.5),
+            sides: 4,
+        }
+        .into(),
+    );
 }
 
 fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -40,6 +52,8 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     ] {
         materials.set_untracked(element.material_handle(), element.material())
     }
+
+    materials.set_untracked(TilePrefab::material_handle(), default());
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,12 +117,19 @@ impl Element {
     }
 }
 
+#[derive(Component)]
+pub struct Gem {
+    pub element: Element,
+}
+
 pub struct GemPrefab {
     pub element: Element,
     pub transform: Transform,
 }
 
 const GEM_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000);
+const TILE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 1);
+const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 1);
 
 impl GemPrefab {
     fn material_handle(&self) -> Handle<StandardMaterial> {
@@ -124,17 +145,14 @@ impl Prefab for GemPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         commands
             .entity(entity)
-            .insert_bundle(SpatialBundle {
+            .insert_bundle(PbrBundle {
+                material: self.material_handle(),
+                mesh: Self::mesh_handle(),
                 transform: self.transform,
                 ..default()
             })
-            .with_children(|parent| {
-                parent.spawn_bundle(PbrBundle {
-                    material: self.material_handle(),
-                    mesh: Self::mesh_handle(),
-                    transform: Transform::from_translation(Vec3::Z),
-                    ..default()
-                });
+            .insert(Gem {
+                element: self.element,
             });
     }
 }
@@ -165,17 +183,19 @@ impl Prefab for BoardPrefab {
 
         for x in 0..6 {
             for y in 0..5 {
-                let child = commands.spawn().id();
+                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 1.0);
+                let transform = Transform::from_translation(offset - middle);
 
-                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
-                GemPrefab {
+                let gem = GemPrefab {
                     element: self.gems[x][y],
-                    transform: Transform::from_translation(offset - middle)
-                        .with_scale(Vec3::splat(0.8)),
-                }
-                .construct(child, commands);
+                    transform: transform.with_scale(Vec3::splat(0.8)),
+                };
+                let tile = TilePrefab {
+                    transform: transform.with_rotation(Quat::from_rotation_z(45_f32.to_radians())),
+                };
 
-                children.push(child);
+                children.push(spawn(gem, commands));
+                children.push(spawn(tile, commands));
             }
         }
 
@@ -186,5 +206,30 @@ impl Prefab for BoardPrefab {
                 ..default()
             })
             .push_children(&children);
+    }
+}
+
+struct TilePrefab {
+    transform: Transform,
+}
+
+impl TilePrefab {
+    fn mesh_handle() -> Handle<Mesh> {
+        Handle::weak(TILE_MESH_ID)
+    }
+
+    fn material_handle() -> Handle<StandardMaterial> {
+        Handle::weak(TILE_MATERIAL_ID)
+    }
+}
+
+impl Prefab for TilePrefab {
+    fn construct(&self, entity: Entity, commands: &mut Commands) {
+        commands.entity(entity).insert_bundle(PbrBundle {
+            mesh: Self::mesh_handle(),
+            material: Self::material_handle(),
+            transform: self.transform,
+            ..default()
+        });
     }
 }
