@@ -17,6 +17,7 @@ impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<TileEvent>()
             .add_event::<Match>()
+            .add_event::<Fall>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(change_gem_material)
@@ -39,6 +40,12 @@ impl Plugin for BoardPlugin {
                 SystemSet::on_update(BoardState::Matching)
                     .with_system(destroy_matches)
                     .with_system(stop_matching),
+            )
+            .add_system_set(SystemSet::on_enter(BoardState::Falling).with_system(begin_fall))
+            .add_system_set(
+                SystemSet::on_update(BoardState::Falling)
+                    .with_system(move_falling_gems)
+                    .with_system(stop_falling),
             );
     }
 }
@@ -304,8 +311,8 @@ struct TileInfo {
 
 fn match_gems(
     boards: Query<&Board>,
-    mut tiles: Query<&Tile>,
-    mut gems: Query<&Gem>,
+    tiles: Query<&Tile>,
+    gems: Query<&Gem>,
     mut events: EventWriter<Match>,
 ) {
     let board = boards.single();
@@ -372,7 +379,7 @@ fn destroy_matches(mut events: EventReader<Match>, tiles: Query<&Tile>, mut comm
 
 fn stop_matching(
     mut any_matches: Local<bool>,
-    mut events: EventReader<Match>,
+    events: EventReader<Match>,
     mut state: ResMut<State<BoardState>>,
 ) {
     if events.is_empty() {
@@ -383,8 +390,114 @@ fn stop_matching(
                 BoardState::Waiting
             })
             .unwrap();
+
+        // needs to be reset or else any_matches will continue to be true
+        // the next time BoardState::Matching is entered
+        *any_matches = false;
     } else {
         *any_matches = true;
+    }
+}
+
+#[derive(Debug)]
+struct Fall {
+    tile: Entity,
+    gem: FallingGem,
+}
+
+#[derive(Debug)]
+enum FallingGem {
+    Existing(Entity),
+    New { height: u8 },
+}
+
+fn begin_fall(
+    boards: Query<&Board>,
+    tiles: Query<&Tile>,
+    gems: Query<&Gem>,
+    mut events: EventWriter<Fall>,
+) {
+    let board = boards.single();
+
+    for column in &board.tiles {
+        let mut height = 0;
+        let mut num_stolen = 0;
+        for (y, entity) in column.into_iter().enumerate() {
+            let tile = tiles.get(*entity).unwrap();
+            let missing = !gems.contains(tile.gem);
+            let stolen = num_stolen > 0;
+
+            if !missing && stolen {
+                num_stolen -= 1;
+            }
+
+            if missing || stolen {
+                let mut num_stolen_copy = num_stolen;
+                let mut free_gems = column[(y + 1)..].into_iter().filter_map(|entity| {
+                    let tile = tiles.get(*entity).unwrap();
+                    let gem = gems.get(tile.gem).ok();
+                    let missing = gem.is_none();
+                    let stolen = num_stolen_copy > 0;
+
+                    if !missing && stolen {
+                        num_stolen_copy -= 1;
+                    }
+
+                    if stolen {
+                        None
+                    } else {
+                        gem.map(|_| tile.gem)
+                    }
+                });
+
+                events.send(Fall {
+                    tile: *entity,
+                    gem: if let Some(gem) = free_gems.next() {
+                        num_stolen += 1;
+                        FallingGem::Existing(gem)
+                    } else {
+                        height += 1;
+                        FallingGem::New { height }
+                    },
+                })
+            }
+        }
+    }
+}
+
+fn move_falling_gems(
+    mut events: EventReader<Fall>,
+    mut tiles: Query<(&mut Tile, &Transform, &Parent)>,
+    mut commands: Commands,
+) {
+    for event in events.iter() {
+        let (mut tile, transform, board) = tiles.get_mut(event.tile).unwrap();
+
+        let gem = match event.gem {
+            FallingGem::Existing(gem) => gem,
+            FallingGem::New { height } => spawn(
+                GemPrefab {
+                    element: Element::random(),
+                    transform: default(),
+                },
+                &mut commands,
+            ),
+        };
+
+        commands.entity(gem).insert(
+            Transform::from_translation(transform.translation.truncate().extend(1.0))
+                .with_scale(Vec3::splat(0.8)),
+        );
+
+        commands.entity(**board).add_child(gem);
+
+        tile.gem = gem;
+    }
+}
+
+fn stop_falling(events: EventReader<Match>, mut state: ResMut<State<BoardState>>) {
+    if events.is_empty() {
+        state.replace(BoardState::Matching).unwrap();
     }
 }
 
