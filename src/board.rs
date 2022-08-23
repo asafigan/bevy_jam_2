@@ -175,7 +175,8 @@ fn change_gem_material(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut events: EventReader<TileEvent>,
     tiles: Query<&Tile>,
-    mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
+    gems: Query<&Gem>,
+    mut meshes: Query<&mut Handle<StandardMaterial>>,
     state: Res<State<BoardState>>,
 ) {
     updated.extend(events.iter().map(|x| x.tile));
@@ -183,7 +184,8 @@ fn change_gem_material(
     if state.current() == &BoardState::Waiting {
         for entity in updated.drain() {
             let tile = tiles.get(entity).unwrap();
-            let (gem, mut material) = gems.get_mut(tile.gem).unwrap();
+            let gem = gems.get(tile.gem).unwrap();
+            let mut material = meshes.get_mut(gem.mesh).unwrap();
             *material = if tile.mouse_in {
                 materials.add(StandardMaterial {
                     base_color: gem.element.color(),
@@ -247,7 +249,7 @@ fn swap_gems(
 
             let mut gem_transform = gems.get_mut(previous_gem).unwrap();
 
-            gem_transform.translation = transform.translation.truncate().extend(1.0);
+            gem_transform.translation = transform.translation;
 
             moving.current_tile = event.tile;
             moving.swaps += 1;
@@ -283,17 +285,24 @@ fn return_gems(
 ) {
     let transform = tiles.get(moving.current_tile).unwrap();
     let mut gem = gems.get_mut(moving.gem).unwrap();
-    gem.translation = transform.translation.truncate().extend(1.0);
+    gem.translation = transform.translation;
 }
 
 fn move_gem(
     moving: Res<Moving>,
-    mut gems: Query<&mut GlobalTransform, With<Gem>>,
+    mut gems: Query<(&mut Transform, &Parent), With<Gem>>,
+    boards: Query<&GlobalTransform>,
     cursors: Query<&WorldCursor>,
 ) {
     if let Some(position) = cursors.single().position {
-        let mut gem_transform = gems.get_mut(moving.gem).unwrap();
-        *gem_transform.translation_mut() = position.extend(2.0).into();
+        let (mut gem_transform, parent) = gems.get_mut(moving.gem).unwrap();
+        let transform = boards.get(parent.get()).unwrap();
+        let position = transform
+            .compute_matrix()
+            .inverse()
+            .transform_point3(position.extend(0.0));
+
+        gem_transform.translation = position.truncate().extend(1.0);
     }
 }
 
@@ -484,10 +493,9 @@ fn move_falling_gems(
             ),
         };
 
-        commands.entity(gem).insert(
-            Transform::from_translation(transform.translation.truncate().extend(1.0))
-                .with_scale(Vec3::splat(0.8)),
-        );
+        commands
+            .entity(gem)
+            .insert(Transform::from_translation(transform.translation));
 
         commands.entity(**board).add_child(gem);
 
@@ -564,6 +572,7 @@ impl Element {
 
 #[derive(Component)]
 pub struct Gem {
+    pub mesh: Entity,
     pub element: Element,
 }
 
@@ -588,17 +597,27 @@ impl GemPrefab {
 
 impl Prefab for GemPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        commands
-            .entity(entity)
-            .insert_bundle(PbrBundle {
+        let mesh = commands
+            .spawn_bundle(PbrBundle {
                 material: self.material_handle(),
                 mesh: Self::mesh_handle(),
+                transform: Transform::from_translation([0.0, 0.0, 1.0].into())
+                    .with_scale(Vec3::splat(0.8)),
+                ..default()
+            })
+            .id();
+
+        commands
+            .entity(entity)
+            .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
             })
             .insert(Gem {
+                mesh,
                 element: self.element,
-            });
+            })
+            .add_child(mesh);
     }
 }
 
@@ -635,13 +654,12 @@ impl Prefab for BoardPrefab {
         for x in 0..6 {
             let mut column = Vec::new();
             for y in 0..5 {
-                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 1.0);
+                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
                 let transform = Transform::from_translation(offset - middle);
                 let gem = spawn(
                     GemPrefab {
                         element: self.gems[x][y],
-                        transform: transform.with_scale(Vec3::splat(0.8))
-                            * Transform::from_xyz(0.0, 0.0, 1.0),
+                        transform,
                     },
                     commands,
                 );
