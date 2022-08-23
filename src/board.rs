@@ -329,29 +329,30 @@ fn match_gems(
 
     let mut matches = Vec::new();
     for row in rows.iter().chain(&columns) {
-        let mut current_match: Option<Match> = None;
+        let mut row = row.into_iter();
+        let first = row.next().unwrap();
+        let mut current_match = Match {
+            tiles: [first.tile].into_iter().collect(),
+            element: first.element,
+        };
+
         for info in row {
-            let mut current = current_match.take().unwrap_or_else(|| Match {
-                tiles: default(),
-                element: info.element,
-            });
-
-            if current.element == info.element {
-                current.tiles.insert(info.tile);
-
-                current_match = Some(current);
+            if current_match.element == info.element {
+                current_match.tiles.insert(info.tile);
             } else {
-                if current.tiles.len() >= 3 {
-                    matches.push(current);
-                }
+                let previous = std::mem::replace(
+                    &mut current_match,
+                    Match {
+                        tiles: [info.tile].into_iter().collect(),
+                        element: info.element,
+                    },
+                );
 
-                current_match = Some(Match {
-                    tiles: [info.tile].into_iter().collect(),
-                    element: info.element,
-                });
+                if previous.tiles.len() >= 3 {
+                    matches.push(previous);
+                };
             }
         }
-        let current_match = current_match.unwrap();
         if current_match.tiles.len() >= 3 {
             matches.push(current_match);
         }
