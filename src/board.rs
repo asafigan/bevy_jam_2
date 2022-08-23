@@ -16,6 +16,7 @@ pub struct BoardPlugin;
 impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<TileEvent>()
+            .add_event::<Match>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(change_gem_material)
@@ -32,7 +33,13 @@ impl Plugin for BoardPlugin {
                     .with_system(drop_gem)
                     .with_system(swap_gems),
             )
-            .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems));
+            .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems))
+            .add_system_set(SystemSet::on_enter(BoardState::Matching).with_system(match_gems))
+            .add_system_set(
+                SystemSet::on_update(BoardState::Matching)
+                    .with_system(destroy_matches)
+                    .with_system(stop_matching),
+            );
     }
 }
 
@@ -40,6 +47,8 @@ impl Plugin for BoardPlugin {
 enum BoardState {
     Waiting,
     Moving,
+    Matching,
+    Falling,
 }
 
 fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
@@ -162,9 +171,7 @@ fn change_gem_material(
     mut gems: Query<(&Gem, &mut Handle<StandardMaterial>)>,
     state: Res<State<BoardState>>,
 ) {
-    for event in events.iter() {
-        updated.insert(event.tile);
-    }
+    updated.extend(events.iter().map(|x| x.tile));
 
     if state.current() == &BoardState::Waiting {
         for entity in updated.drain() {
@@ -241,14 +248,24 @@ fn swap_gems(
     }
 }
 
-fn drop_gem(mut events: EventReader<MouseButtonInput>, mut state: ResMut<State<BoardState>>) {
+fn drop_gem(
+    mut events: EventReader<MouseButtonInput>,
+    mut state: ResMut<State<BoardState>>,
+    moving: Res<Moving>,
+) {
     let drop = events
         .iter()
         .filter(|e| e.button == MouseButton::Left)
         .fold(false, |_, current| current.state == ButtonState::Released);
 
     if drop {
-        state.replace(BoardState::Waiting).unwrap();
+        state
+            .replace(if moving.swaps > 0 {
+                BoardState::Matching
+            } else {
+                BoardState::Waiting
+            })
+            .unwrap();
     }
 }
 
@@ -273,7 +290,104 @@ fn move_gem(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
+struct Match {
+    tiles: HashSet<Entity>,
+    element: Element,
+}
+
+#[derive(Clone, Copy)]
+struct TileInfo {
+    tile: Entity,
+    element: Element,
+}
+
+fn match_gems(
+    boards: Query<&Board>,
+    mut tiles: Query<&Tile>,
+    mut gems: Query<&Gem>,
+    mut events: EventWriter<Match>,
+) {
+    let board = boards.single();
+
+    let mut rows = vec![Vec::new(); 5];
+    let mut columns = vec![Vec::new(); 6];
+
+    for (x, column) in board.tiles.iter().enumerate() {
+        for (y, &entity) in column.iter().enumerate() {
+            let tile = tiles.get(entity).unwrap();
+            let gem = gems.get(tile.gem).unwrap();
+            let info = TileInfo {
+                tile: entity,
+                element: gem.element,
+            };
+
+            columns[x].push(info);
+            rows[y].push(info);
+        }
+    }
+
+    let mut matches = Vec::new();
+    for row in rows.iter().chain(&columns) {
+        let mut current_match: Option<Match> = None;
+        for info in row {
+            let mut current = current_match.take().unwrap_or_else(|| Match {
+                tiles: default(),
+                element: info.element,
+            });
+
+            if current.element == info.element {
+                current.tiles.insert(info.tile);
+
+                current_match = Some(current);
+            } else {
+                if current.tiles.len() >= 3 {
+                    matches.push(current);
+                }
+
+                current_match = Some(Match {
+                    tiles: [info.tile].into_iter().collect(),
+                    element: info.element,
+                });
+            }
+        }
+        let current_match = current_match.unwrap();
+        if current_match.tiles.len() >= 3 {
+            matches.push(current_match);
+        }
+    }
+
+    events.send_batch(matches.into_iter());
+}
+
+fn destroy_matches(mut events: EventReader<Match>, tiles: Query<&Tile>, mut commands: Commands) {
+    for event in events.iter() {
+        for &entity in &event.tiles {
+            let tile = tiles.get(entity).unwrap();
+            commands.entity(tile.gem).despawn_recursive();
+        }
+    }
+}
+
+fn stop_matching(
+    mut any_matches: Local<bool>,
+    mut events: EventReader<Match>,
+    mut state: ResMut<State<BoardState>>,
+) {
+    if events.is_empty() {
+        state
+            .replace(if *any_matches {
+                BoardState::Falling
+            } else {
+                BoardState::Waiting
+            })
+            .unwrap();
+    } else {
+        *any_matches = true;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Element {
     Life,
     Death,
@@ -374,6 +488,11 @@ impl Prefab for GemPrefab {
     }
 }
 
+#[derive(Component)]
+pub struct Board {
+    tiles: [[Entity; 5]; 6],
+}
+
 pub struct BoardPrefab {
     pub gems: [[Element; 5]; 6],
     pub transform: Transform,
@@ -398,7 +517,9 @@ impl Prefab for BoardPrefab {
 
         let middle = Vec3::new(6.0 / 2.0, 5.0 / 2.0, 0.0);
 
+        let mut tiles: Vec<[Entity; 5]> = Vec::new();
         for x in 0..6 {
+            let mut column = Vec::new();
             for y in 0..5 {
                 let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 1.0);
                 let transform = Transform::from_translation(offset - middle);
@@ -411,11 +532,15 @@ impl Prefab for BoardPrefab {
                     commands,
                 );
 
-                let tile = TilePrefab { gem, transform };
+                let tile = spawn(TilePrefab { gem, transform }, commands);
 
                 children.push(gem);
-                children.push(spawn(tile, commands));
+                children.push(tile);
+
+                column.push(tile);
             }
+
+            tiles.push(column.try_into().unwrap());
         }
 
         commands
@@ -423,6 +548,9 @@ impl Prefab for BoardPrefab {
             .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
+            })
+            .insert(Board {
+                tiles: tiles.try_into().unwrap(),
             })
             .push_children(&children);
     }
