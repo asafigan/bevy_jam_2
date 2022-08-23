@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::prefab::*;
 use bevy::{
     asset::HandleId,
@@ -9,6 +11,9 @@ use bevy::{
     reflect::TypeUuid,
     render::camera::RenderTarget,
     utils::HashSet,
+};
+use bevy_tweening::{
+    lens::TransformPositionLens, Animator, EaseFunction, Tween, TweenCompleted, TweeningType,
 };
 
 pub struct BoardPlugin;
@@ -179,6 +184,9 @@ fn change_gem_material(
     mut meshes: Query<&mut Handle<StandardMaterial>>,
     state: Res<State<BoardState>>,
 ) {
+    // todo: bug: if the gem you grabed is placed above matches and then falls it's material will not be reset
+    // also the material needs to be reset during the match and fall state
+
     updated.extend(events.iter().map(|x| x.tile));
 
     if state.current() == &BoardState::Waiting {
@@ -475,27 +483,50 @@ fn begin_fall(
 }
 
 fn move_falling_gems(
-    mut events: EventReader<Fall>,
+    mut fall_events: EventReader<Fall>,
     mut tiles: Query<(&mut Tile, &Transform, &Parent)>,
+    transforms: Query<&Transform>,
     mut commands: Commands,
 ) {
-    for event in events.iter() {
-        let (mut tile, transform, board) = tiles.get_mut(event.tile).unwrap();
+    for event in fall_events.iter() {
+        let (mut tile, &transform, board) = tiles.get_mut(event.tile).unwrap();
 
-        let gem = match event.gem {
-            FallingGem::Existing(gem) => gem,
-            FallingGem::New { height } => spawn(
-                GemPrefab {
-                    element: Element::random(),
-                    transform: default(),
-                },
-                &mut commands,
-            ),
+        let (gem, start) = match event.gem {
+            FallingGem::Existing(gem) => (gem, transforms.get(gem).unwrap().translation),
+            FallingGem::New { height } => {
+                let translation = Vec3::new(
+                    transform.translation.x,
+                    BOARD_MIDDLE.y - 0.5 + height as f32,
+                    0.0,
+                );
+                (
+                    spawn(
+                        GemPrefab {
+                            element: Element::random(),
+                            transform: Transform::from_translation(translation),
+                        },
+                        &mut commands,
+                    ),
+                    translation,
+                )
+            }
         };
 
-        commands
-            .entity(gem)
-            .insert(Transform::from_translation(transform.translation));
+        let end = transform.translation;
+
+        let height = start.y - end.y;
+        let gravity = 30.0;
+
+        let mut tween = Tween::new(
+            EaseFunction::QuadraticIn,
+            TweeningType::Once,
+            Duration::from_secs_f32(f32::sqrt(2.0 * gravity * height) / gravity),
+            TransformPositionLens { start, end },
+        );
+
+        tween.set_completed_event(0);
+
+        commands.entity(gem).insert(Animator::new(tween));
 
         commands.entity(**board).add_child(gem);
 
@@ -503,8 +534,21 @@ fn move_falling_gems(
     }
 }
 
-fn stop_falling(events: EventReader<Match>, mut state: ResMut<State<BoardState>>) {
-    if events.is_empty() {
+fn stop_falling(
+    mut waiting_for: Local<u32>,
+    mut fall_events: EventReader<Fall>,
+    mut state: ResMut<State<BoardState>>,
+    mut tween_events: EventReader<TweenCompleted>,
+) {
+    for event in fall_events.iter() {
+        *waiting_for += 1;
+    }
+
+    for event in tween_events.iter() {
+        *waiting_for -= 1;
+    }
+
+    if *waiting_for == 0 {
         state.replace(BoardState::Matching).unwrap();
     }
 }
@@ -644,11 +688,13 @@ impl BoardPrefab {
     }
 }
 
+const BOARD_MIDDLE: Vec3 = Vec3::new(6.0 / 2.0, 5.0 / 2.0, 0.0);
+
 impl Prefab for BoardPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let mut children = Vec::new();
 
-        let middle = Vec3::new(6.0 / 2.0, 5.0 / 2.0, 0.0);
+        let middle = BOARD_MIDDLE;
 
         let mut tiles: Vec<[Entity; 5]> = Vec::new();
         for x in 0..6 {

@@ -1,5 +1,6 @@
 use bevy::{prelude::*, render::camera::ScalingMode};
-use board::{BoardPrefab, WorldCursor};
+use bevy_tweening::TweeningPlugin;
+use board::{BoardPlugin, BoardPrefab, WorldCursor};
 use prefab::spawn;
 
 mod board;
@@ -17,7 +18,8 @@ pub fn build_app() -> App {
         ..default()
     })
     .add_plugins(DefaultPlugins)
-    .add_plugin(board::BoardPlugin)
+    .add_plugin(TweeningPlugin)
+    .add_plugin(BoardPlugin)
     .add_startup_system(setup);
 
     app
