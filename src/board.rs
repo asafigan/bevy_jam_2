@@ -184,7 +184,7 @@ fn change_gem_material(
     mut meshes: Query<&mut Handle<StandardMaterial>>,
     state: Res<State<BoardState>>,
 ) {
-    // todo: bug: if the gem you grabed is placed above matches and then falls it's material will not be reset
+    // todo: bug: if the gem you grabbed is placed above matches and then falls it's material will not be reset
     // also the material needs to be reset during the match and fall state
 
     updated.extend(events.iter().map(|x| x.tile));
@@ -240,18 +240,39 @@ fn pickup_gem(
 
 fn swap_gems(
     mut moving: ResMut<Moving>,
-    mut events: EventReader<TileEvent>,
-    mut tiles: Query<(&mut Tile, &Transform), Without<Gem>>,
+    mut tiles: Query<(Entity, &mut Tile, &Transform), Without<Gem>>,
     mut gems: Query<&mut Transform, With<Gem>>,
+    cursors: Query<&WorldCursor>,
+    boards: Query<&GlobalTransform, With<Board>>,
 ) {
-    for event in events.iter() {
-        if event.info == TileEventInfo::Entered {
-            let (mut tile, _) = tiles.get_mut(event.tile).unwrap();
+    // todo: bug: skip tile
+    // todo: bug: diangles
 
+    let cursor = cursors.single();
+
+    if let Some(position) = cursor.position {
+        let position = boards
+            .single()
+            .compute_matrix()
+            .inverse()
+            .transform_point3(position.extend(0.0))
+            .truncate();
+
+        let (closet, mut tile, _) = tiles
+            .iter_mut()
+            .max_by(|(_, _, a), (_, _, b)| {
+                let a = a.translation.truncate().distance(position);
+                let b = b.translation.truncate().distance(position);
+
+                b.total_cmp(&a)
+            })
+            .unwrap();
+
+        if closet != moving.current_tile {
             let previous_gem = tile.gem;
             tile.gem = moving.gem;
 
-            let (mut tile, transform) = tiles.get_mut(moving.current_tile).unwrap();
+            let (_, mut tile, transform) = tiles.get_mut(moving.current_tile).unwrap();
 
             tile.gem = previous_gem;
 
@@ -259,7 +280,7 @@ fn swap_gems(
 
             gem_transform.translation = transform.translation;
 
-            moving.current_tile = event.tile;
+            moving.current_tile = closet;
             moving.swaps += 1;
         }
     }
@@ -332,6 +353,8 @@ fn match_gems(
     gems: Query<&Gem>,
     mut events: EventWriter<Match>,
 ) {
+    // todo: combine linked matches
+
     let board = boards.single();
 
     let mut rows = vec![Vec::new(); 5];
@@ -353,7 +376,7 @@ fn match_gems(
 
     let mut matches = Vec::new();
     for row in rows.iter().chain(&columns) {
-        let mut row = row.into_iter();
+        let mut row = row.iter();
         let first = row.next().unwrap();
         let mut current_match = Match {
             tiles: [first.tile].into_iter().collect(),
@@ -439,7 +462,7 @@ fn begin_fall(
     for column in &board.tiles {
         let mut height = 0;
         let mut num_stolen = 0;
-        for (y, entity) in column.into_iter().enumerate() {
+        for (y, entity) in column.iter().enumerate() {
             let tile = tiles.get(*entity).unwrap();
             let missing = !gems.contains(tile.gem);
             let stolen = num_stolen > 0;
@@ -450,7 +473,7 @@ fn begin_fall(
 
             if missing || stolen {
                 let mut num_stolen_copy = num_stolen;
-                let mut free_gems = column[(y + 1)..].into_iter().filter_map(|entity| {
+                let mut free_gems = column[(y + 1)..].iter().filter_map(|entity| {
                     let tile = tiles.get(*entity).unwrap();
                     let gem = gems.get(tile.gem).ok();
                     let missing = gem.is_none();
@@ -535,18 +558,14 @@ fn move_falling_gems(
 }
 
 fn stop_falling(
-    mut waiting_for: Local<u32>,
+    mut waiting_for: Local<usize>,
     mut fall_events: EventReader<Fall>,
     mut state: ResMut<State<BoardState>>,
     mut tween_events: EventReader<TweenCompleted>,
 ) {
-    for event in fall_events.iter() {
-        *waiting_for += 1;
-    }
+    *waiting_for += fall_events.iter().count();
 
-    for event in tween_events.iter() {
-        *waiting_for -= 1;
-    }
+    *waiting_for -= tween_events.iter().count();
 
     if *waiting_for == 0 {
         state.replace(BoardState::Matching).unwrap();
