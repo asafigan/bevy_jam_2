@@ -32,12 +32,14 @@ impl Plugin for BoardPlugin {
                 CoreStage::PreUpdate,
                 track_tile_hover.after(update_world_cursors),
             )
+            .add_system_set(SystemSet::on_enter(BoardState::Waiting).with_system(reset_timer))
             .add_system_set(SystemSet::on_update(BoardState::Waiting).with_system(pickup_gem))
             .add_system_set(
                 SystemSet::on_update(BoardState::Moving)
                     .with_system(move_gem)
-                    .with_system(drop_gem)
-                    .with_system(swap_gems),
+                    .with_system(swap_gems)
+                    .with_system(update_timer.after(swap_gems))
+                    .with_system(drop_gem.after(update_timer)),
             )
             .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems))
             .add_system_set(SystemSet::on_enter(BoardState::Matching).with_system(match_gems))
@@ -73,14 +75,13 @@ fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
         .into(),
     );
 
-    meshes.set_untracked(
-        TilePrefab::mesh_handle(),
-        RegularPolygon {
-            radius: f32::sqrt(0.5),
-            sides: 4,
-        }
-        .into(),
-    );
+    let square = RegularPolygon {
+        radius: f32::sqrt(0.5),
+        sides: 4,
+    };
+
+    meshes.set_untracked(TilePrefab::mesh_handle(), square.into());
+    meshes.set_untracked(TimerPrefab::mesh_handle(), square.into());
 }
 
 fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -96,6 +97,7 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 
     materials.set_untracked(TilePrefab::material_handle(), default());
+    materials.set_untracked(TimerPrefab::material_handle(), default());
 }
 
 #[derive(Component, Default)]
@@ -211,6 +213,13 @@ struct Moving {
     swaps: u32,
     gem: Entity,
     current_tile: Entity,
+    timer: Timer,
+}
+
+fn reset_timer(mut timers: Query<&mut Transform, With<TimerProgress>>) {
+    for mut transform in &mut timers {
+        transform.scale.x = 1.0;
+    }
 }
 
 fn pickup_gem(
@@ -231,10 +240,25 @@ fn pickup_gem(
                     swaps: 0,
                     gem: tile.gem,
                     current_tile: entity,
+                    timer: Timer::from_seconds(9.0, false),
                 });
                 state.replace(BoardState::Moving).unwrap();
             }
         }
+    }
+}
+
+fn update_timer(
+    mut moving: ResMut<Moving>,
+    time: Res<Time>,
+    mut timers: Query<&mut Transform, With<TimerProgress>>,
+) {
+    if moving.swaps > 0 {
+        moving.timer.tick(time.delta());
+    }
+
+    for mut transform in &mut timers {
+        transform.scale.x = moving.timer.percent_left();
     }
 }
 
@@ -296,7 +320,7 @@ fn drop_gem(
         .filter(|e| e.button == MouseButton::Left)
         .fold(false, |_, current| current.state == ButtonState::Released);
 
-    if drop {
+    if drop || moving.timer.finished() {
         state
             .replace(if moving.swaps > 0 {
                 BoardState::Matching
@@ -539,7 +563,6 @@ fn move_falling_gems(
 
         let height = start.y - end.y;
         let gravity = 30.0;
-
         let mut tween = Tween::new(
             EaseFunction::QuadraticIn,
             TweeningType::Once,
@@ -633,6 +656,14 @@ impl Element {
     }
 }
 
+const GEM_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000);
+
+const TILE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 1);
+const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 1);
+
+const TIMER_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
+const TIMER_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
+
 #[derive(Component)]
 pub struct Gem {
     pub mesh: Entity,
@@ -643,10 +674,6 @@ pub struct GemPrefab {
     pub element: Element,
     pub transform: Transform,
 }
-
-const GEM_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000);
-const TILE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 1);
-const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 1);
 
 impl GemPrefab {
     fn material_handle(&self) -> Handle<StandardMaterial> {
@@ -740,6 +767,14 @@ impl Prefab for BoardPrefab {
             tiles.push(column.try_into().unwrap());
         }
 
+        children.push(spawn(
+            TimerPrefab {
+                transform: Transform::from_xyz(0.0, BOARD_MIDDLE.y + 0.5, 0.0)
+                    .with_scale([BOARD_MIDDLE.x * 2.0, 0.25, 1.0].into()),
+            },
+            commands,
+        ));
+
         commands
             .entity(entity)
             .insert_bundle(SpatialBundle {
@@ -798,5 +833,49 @@ impl Prefab for TilePrefab {
                 mesh,
             })
             .add_child(mesh);
+    }
+}
+
+#[derive(Component)]
+struct TimerProgress;
+
+struct TimerPrefab {
+    transform: Transform,
+}
+
+impl TimerPrefab {
+    fn mesh_handle() -> Handle<Mesh> {
+        Handle::weak(TIMER_MESH_ID)
+    }
+
+    fn material_handle() -> Handle<StandardMaterial> {
+        Handle::weak(TIMER_MATERIAL_ID)
+    }
+}
+
+impl Prefab for TimerPrefab {
+    fn construct(&self, entity: Entity, commands: &mut Commands) {
+        let mesh = commands
+            .spawn_bundle(PbrBundle {
+                mesh: Self::mesh_handle(),
+                material: Self::material_handle(),
+                transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
+                ..default()
+            })
+            .id();
+
+        let progress = commands
+            .spawn_bundle(SpatialBundle::default())
+            .insert(TimerProgress)
+            .add_child(mesh)
+            .id();
+
+        commands
+            .entity(entity)
+            .insert_bundle(SpatialBundle {
+                transform: self.transform,
+                ..default()
+            })
+            .add_child(progress);
     }
 }
