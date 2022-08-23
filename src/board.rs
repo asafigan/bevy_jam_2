@@ -35,13 +35,13 @@ impl Plugin for BoardPlugin {
             .add_system_set(SystemSet::on_enter(BoardState::Waiting).with_system(reset_timer))
             .add_system_set(SystemSet::on_update(BoardState::Waiting).with_system(pickup_gem))
             .add_system_set(
-                SystemSet::on_update(BoardState::Moving)
+                SystemSet::on_update(BoardState::Swapping)
                     .with_system(move_gem)
                     .with_system(swap_gems)
                     .with_system(update_timer.after(swap_gems))
                     .with_system(drop_gem.after(update_timer)),
             )
-            .add_system_set(SystemSet::on_exit(BoardState::Moving).with_system(return_gems))
+            .add_system_set(SystemSet::on_exit(BoardState::Swapping).with_system(return_gems))
             .add_system_set(SystemSet::on_enter(BoardState::Matching).with_system(match_gems))
             .add_system_set(
                 SystemSet::on_update(BoardState::Matching)
@@ -60,7 +60,7 @@ impl Plugin for BoardPlugin {
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 enum BoardState {
     Waiting,
-    Moving,
+    Swapping,
     Matching,
     Falling,
 }
@@ -209,7 +209,7 @@ fn change_gem_material(
     }
 }
 
-struct Moving {
+struct Swapping {
     swaps: u32,
     gem: Entity,
     current_tile: Entity,
@@ -236,34 +236,34 @@ fn pickup_gem(
     if start_pickup {
         for (entity, tile) in &tiles {
             if tile.mouse_in {
-                commands.insert_resource(Moving {
+                commands.insert_resource(Swapping {
                     swaps: 0,
                     gem: tile.gem,
                     current_tile: entity,
                     timer: Timer::from_seconds(9.0, false),
                 });
-                state.replace(BoardState::Moving).unwrap();
+                state.replace(BoardState::Swapping).unwrap();
             }
         }
     }
 }
 
 fn update_timer(
-    mut moving: ResMut<Moving>,
+    mut swapping: ResMut<Swapping>,
     time: Res<Time>,
     mut timers: Query<&mut Transform, With<TimerProgress>>,
 ) {
-    if moving.swaps > 0 {
-        moving.timer.tick(time.delta());
+    if swapping.swaps > 0 {
+        swapping.timer.tick(time.delta());
     }
 
     for mut transform in &mut timers {
-        transform.scale.x = moving.timer.percent_left();
+        transform.scale.x = swapping.timer.percent_left();
     }
 }
 
 fn swap_gems(
-    mut moving: ResMut<Moving>,
+    mut swapping: ResMut<Swapping>,
     mut tiles: Query<(Entity, &mut Tile, &Transform), Without<Gem>>,
     mut gems: Query<&mut Transform, With<Gem>>,
     cursors: Query<&WorldCursor>,
@@ -292,11 +292,11 @@ fn swap_gems(
             })
             .unwrap();
 
-        if closet != moving.current_tile {
+        if closet != swapping.current_tile {
             let previous_gem = tile.gem;
-            tile.gem = moving.gem;
+            tile.gem = swapping.gem;
 
-            let (_, mut tile, transform) = tiles.get_mut(moving.current_tile).unwrap();
+            let (_, mut tile, transform) = tiles.get_mut(swapping.current_tile).unwrap();
 
             tile.gem = previous_gem;
 
@@ -304,8 +304,8 @@ fn swap_gems(
 
             gem_transform.translation = transform.translation;
 
-            moving.current_tile = closet;
-            moving.swaps += 1;
+            swapping.current_tile = closet;
+            swapping.swaps += 1;
         }
     }
 }
@@ -313,16 +313,16 @@ fn swap_gems(
 fn drop_gem(
     mut events: EventReader<MouseButtonInput>,
     mut state: ResMut<State<BoardState>>,
-    moving: Res<Moving>,
+    swapping: Res<Swapping>,
 ) {
     let drop = events
         .iter()
         .filter(|e| e.button == MouseButton::Left)
         .fold(false, |_, current| current.state == ButtonState::Released);
 
-    if drop || moving.timer.finished() {
+    if drop || swapping.timer.finished() {
         state
-            .replace(if moving.swaps > 0 {
+            .replace(if swapping.swaps > 0 {
                 BoardState::Matching
             } else {
                 BoardState::Waiting
@@ -334,21 +334,21 @@ fn drop_gem(
 fn return_gems(
     mut gems: Query<&mut Transform, (Without<Tile>, With<Gem>)>,
     tiles: Query<&Transform, With<Tile>>,
-    moving: Res<Moving>,
+    swapping: Res<Swapping>,
 ) {
-    let transform = tiles.get(moving.current_tile).unwrap();
-    let mut gem = gems.get_mut(moving.gem).unwrap();
+    let transform = tiles.get(swapping.current_tile).unwrap();
+    let mut gem = gems.get_mut(swapping.gem).unwrap();
     gem.translation = transform.translation;
 }
 
 fn move_gem(
-    moving: Res<Moving>,
+    swapping: Res<Swapping>,
     mut gems: Query<(&mut Transform, &Parent), With<Gem>>,
     boards: Query<&GlobalTransform>,
     cursors: Query<&WorldCursor>,
 ) {
     if let Some(position) = cursors.single().position {
-        let (mut gem_transform, parent) = gems.get_mut(moving.gem).unwrap();
+        let (mut gem_transform, parent) = gems.get_mut(swapping.gem).unwrap();
         let transform = boards.get(parent.get()).unwrap();
         let position = transform
             .compute_matrix()
