@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason};
+use bevy::render::view::RenderLayers;
 use bevy::{
     asset::HandleId,
     input::{mouse::MouseButtonInput, ButtonState},
@@ -18,6 +19,8 @@ use bevy_tweening::{
     lens::{TransformPositionLens, TransformScaleLens},
     Animator, Delay, EaseFunction, Tween, TweenCompleted, TweeningType,
 };
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 pub struct BoardPlugin;
 
@@ -656,7 +659,7 @@ fn stop_falling(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumVariantNames, EnumIter, EnumCount, Display)]
 pub enum Element {
     Life,
     Death,
@@ -670,27 +673,10 @@ impl Element {
     fn random() -> Element {
         let rng = fastrand::Rng::new();
 
-        rng.u8(..6).try_into().unwrap()
+        let n = rng.usize(..Self::COUNT);
+        Self::iter().nth(n).unwrap()
     }
-}
 
-impl TryFrom<u8> for Element {
-    type Error = u8;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            x if x == Element::Life as u8 => Ok(Element::Life),
-            x if x == Element::Death as u8 => Ok(Element::Death),
-            x if x == Element::Water as u8 => Ok(Element::Water),
-            x if x == Element::Fire as u8 => Ok(Element::Fire),
-            x if x == Element::Nature as u8 => Ok(Element::Nature),
-            x if x == Element::Electric as u8 => Ok(Element::Electric),
-            x => Err(x),
-        }
-    }
-}
-
-impl Element {
     fn material_handle(&self) -> Handle<StandardMaterial> {
         Handle::weak(HandleId::new(
             StandardMaterial::TYPE_UUID,
@@ -778,6 +764,7 @@ pub struct Board {
 }
 
 pub struct BoardPrefab {
+    pub layers: RenderLayers,
     pub gems: [[Element; 5]; 6],
     pub transform: Transform,
 }
@@ -836,6 +823,16 @@ impl Prefab for BoardPrefab {
             commands,
         ));
 
+        let light = commands
+            .spawn_bundle(DirectionalLightBundle {
+                transform: Transform::from_rotation(
+                    Quat::from_rotation_x(-45_f32.to_radians())
+                        * Quat::from_rotation_y(-45_f32.to_radians()),
+                ),
+                ..default()
+            })
+            .id();
+
         commands
             .entity(entity)
             .insert_bundle(SpatialBundle {
@@ -845,7 +842,9 @@ impl Prefab for BoardPrefab {
             .insert(Board {
                 tiles: tiles.try_into().unwrap(),
             })
-            .push_children(&children);
+            .insert(self.layers)
+            .push_children(&children)
+            .add_child(light);
     }
 }
 

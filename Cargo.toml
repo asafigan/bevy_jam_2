@@ -10,6 +10,8 @@ edition = "2021"
 bevy = { version = "0.8", features = ["dynamic"] }
 fastrand = "1"
 bevy_tweening = "0.5"
+strum_macros = "0.24"
+strum = "0.24"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
