@@ -3,6 +3,7 @@ use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardPrefab, WorldCursor};
 use prefab::spawn;
 
+mod animation;
 mod board;
 mod prefab;
 

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::animation::AnimationType;
 use crate::prefab::*;
 use bevy::{
     asset::HandleId,
@@ -570,7 +571,7 @@ fn move_falling_gems(
             TransformPositionLens { start, end },
         );
 
-        tween.set_completed_event(0);
+        tween.set_completed_event(AnimationType::Fall.into());
 
         commands.entity(gem).insert(Animator::new(tween));
 
@@ -588,7 +589,10 @@ fn stop_falling(
 ) {
     *waiting_for += fall_events.iter().count();
 
-    *waiting_for -= tween_events.iter().count();
+    *waiting_for -= tween_events
+        .iter()
+        .filter(|e| AnimationType::try_from(e.user_data) == Ok(AnimationType::Fall))
+        .count();
 
     if *waiting_for == 0 {
         state.replace(BoardState::Matching).unwrap();
