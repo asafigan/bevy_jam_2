@@ -1,4 +1,4 @@
-use bevy::{animation, asset::HandleId, prelude::*, render::view::RenderLayers};
+use bevy::{asset::HandleId, gltf::Gltf, prelude::*, render::view::RenderLayers};
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
@@ -9,7 +9,8 @@ pub struct BattlePlugin;
 impl Plugin for BattlePlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(load_enemy_models)
-            .add_system(play_idle_animation);
+            .add_system(play_idle_animation)
+            .add_system(find_enemy_animations);
     }
 }
 
@@ -23,29 +24,60 @@ fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
     commands.insert_resource(EnemyModels { models });
 }
 
-fn play_idle_animation(
-    enemies: Query<(Entity, &Enemy)>,
-    children: Query<&Children>,
-    mut animations: Query<&mut AnimationPlayer, Added<AnimationPlayer>>,
+#[derive(Component)]
+struct EnemyAnimations {
+    idle: Handle<AnimationClip>,
+}
+
+fn find_enemy_animations(
+    enemies: Query<(Entity, &Enemy), Without<EnemyAnimations>>,
+    mut commands: Commands,
+    gltfs: Res<Assets<Gltf>>,
 ) {
-    'enemies: for (entity, enemy) in &enemies {
-        for child in children.get(entity).into_iter().flatten() {
-            if let Ok(mut animation_player) = animations.get_mut(*child) {
-                animation_player
-                    .play(enemy.kind.idle_animation_handle())
-                    .repeat();
+    for (entity, enemy) in &enemies {
+        if let Some(gltf) = gltfs.get(&enemy.kind.gltf_handle()) {
+            let idle = ["Idle", "Flying"]
+                .iter()
+                .find_map(|name| gltf.named_animations.get(*name));
 
-                continue 'enemies;
+            if let Some(idle) = idle {
+                commands
+                    .entity(entity)
+                    .insert(EnemyAnimations { idle: idle.clone() });
             }
+        }
+    }
+}
 
-            for child in children.get(*child).into_iter().flatten() {
-                if let Ok(mut animation_player) = animations.get_mut(*child) {
-                    animation_player
-                        .play(enemy.kind.idle_animation_handle())
-                        .repeat();
+fn play_idle_animation(
+    enemies: Query<(Entity, &EnemyAnimations)>,
+    children: Query<&Children>,
+    mut animations: Query<&mut AnimationPlayer>,
+) {
+    fn find_animation_player(
+        entity: Entity,
+        children: &Query<&Children>,
+        animations: &Query<&mut AnimationPlayer>,
+    ) -> Option<Entity> {
+        if animations.contains(entity) {
+            return Some(entity);
+        }
 
-                    continue 'enemies;
-                }
+        children
+            .get(entity)
+            .into_iter()
+            .flatten()
+            .cloned()
+            .find_map(|e| find_animation_player(e, children, animations))
+    }
+
+    for (entity, enemy_animations) in &enemies {
+        if let Some(entity) = find_animation_player(entity, &children, &animations) {
+            let mut animation_player = animations.get_mut(entity).unwrap();
+            if animation_player.elapsed() == 0.0 {
+                animation_player
+                    .play(enemy_animations.idle.clone())
+                    .repeat();
             }
         }
     }
@@ -132,8 +164,8 @@ impl EnemyKind {
         Handle::weak(HandleId::AssetPathId(path.as_str().into()))
     }
 
-    pub fn idle_animation_handle(&self) -> Handle<AnimationClip> {
-        let path = format!("models/enemies/{self}.glb#Animation5");
+    pub fn gltf_handle(&self) -> Handle<Gltf> {
+        let path = format!("models/enemies/{self}.glb");
 
         Handle::weak(HandleId::AssetPathId(path.as_str().into()))
     }
