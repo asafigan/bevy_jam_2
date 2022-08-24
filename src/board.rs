@@ -19,6 +19,7 @@ use bevy_tweening::{
     lens::{TransformPositionLens, TransformScaleLens},
     Animator, Delay, EaseFunction, Tween, TweenCompleted, TweeningType,
 };
+use iyes_loopless::prelude::*;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
@@ -32,40 +33,50 @@ impl Plugin for BoardPlugin {
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(change_gem_material)
-            .add_state(BoardState::Waiting)
+            .add_loopless_state(BoardState::Waiting)
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_to_stage(
                 CoreStage::PreUpdate,
                 track_tile_hover.after(update_world_cursors),
             )
-            .add_system_set(SystemSet::on_enter(BoardState::Waiting).with_system(reset_timer))
-            .add_system_set(SystemSet::on_update(BoardState::Waiting).with_system(pickup_gem))
+            .add_enter_system(BoardState::Waiting, reset_timer)
             .add_system_set(
-                SystemSet::on_update(BoardState::Swapping)
+                ConditionSet::new()
+                    .run_in_state(BoardState::Ready)
+                    .with_system(pickup_gem)
+                    .into(),
+            )
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(BoardState::Swapping)
                     .with_system(move_gem)
-                    .with_system(swap_gems)
-                    .with_system(update_timer.after(swap_gems))
-                    .with_system(drop_gem.after(update_timer)),
+                    .with_system(swap_gems.chain(update_timer).chain(drop_gem))
+                    .into(),
             )
-            .add_system_set(SystemSet::on_exit(BoardState::Swapping).with_system(return_gems))
-            .add_system_set(SystemSet::on_enter(BoardState::Matching).with_system(match_gems))
+            .add_exit_system(BoardState::Swapping, return_gems)
+            .add_enter_system(BoardState::Matching, match_gems)
             .add_system_set(
-                SystemSet::on_update(BoardState::Matching)
+                ConditionSet::new()
+                    .run_in_state(BoardState::Matching)
                     .with_system(destroy_matches)
-                    .with_system(stop_matching),
+                    .with_system(stop_matching)
+                    .into(),
             )
-            .add_system_set(SystemSet::on_enter(BoardState::Falling).with_system(begin_fall))
+            .add_enter_system(BoardState::Falling, begin_fall)
             .add_system_set(
-                SystemSet::on_update(BoardState::Falling)
+                ConditionSet::new()
+                    .run_in_state(BoardState::Falling)
                     .with_system(move_falling_gems)
-                    .with_system(stop_falling),
+                    .with_system(stop_falling)
+                    .into(),
             );
     }
 }
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-enum BoardState {
+pub enum BoardState {
     Waiting,
+    Ready,
     Swapping,
     Matching,
     Falling,
@@ -190,14 +201,14 @@ fn change_gem_material(
     tiles: Query<&Tile>,
     gems: Query<&Gem>,
     mut meshes: Query<&mut Handle<StandardMaterial>>,
-    state: Res<State<BoardState>>,
+    state: Res<CurrentState<BoardState>>,
 ) {
     // todo: bug: if the gem you grabbed is placed above matches and then falls it's material will not be reset
     // also the material needs to be reset during the match and fall state
 
     updated.extend(events.iter().map(|x| x.tile));
 
-    if state.current() == &BoardState::Waiting {
+    if state.0 == BoardState::Ready {
         for entity in updated.drain() {
             let tile = tiles.get(entity).unwrap();
             let gem = gems.get(tile.gem).unwrap();
@@ -232,7 +243,6 @@ fn pickup_gem(
     mut events: EventReader<MouseButtonInput>,
     tiles: Query<(Entity, &Tile)>,
     mut commands: Commands,
-    mut state: ResMut<State<BoardState>>,
 ) {
     let start_pickup = events
         .iter()
@@ -248,7 +258,7 @@ fn pickup_gem(
                     current_tile: entity,
                     timer: Timer::from_seconds(9.0, false),
                 });
-                state.replace(BoardState::Swapping).unwrap();
+                commands.insert_resource(NextState(BoardState::Swapping));
             }
         }
     }
@@ -318,8 +328,8 @@ fn swap_gems(
 
 fn drop_gem(
     mut events: EventReader<MouseButtonInput>,
-    mut state: ResMut<State<BoardState>>,
     swapping: Res<Swapping>,
+    mut commands: Commands,
 ) {
     let drop = events
         .iter()
@@ -327,13 +337,11 @@ fn drop_gem(
         .fold(false, |_, current| current.state == ButtonState::Released);
 
     if drop || swapping.timer.finished() {
-        state
-            .replace(if swapping.swaps > 0 {
-                BoardState::Matching
-            } else {
-                BoardState::Waiting
-            })
-            .unwrap();
+        commands.insert_resource(NextState(if swapping.swaps > 0 {
+            BoardState::Matching
+        } else {
+            BoardState::Ready
+        }));
     }
 }
 
@@ -457,7 +465,7 @@ fn match_gems(
 }
 
 fn destroy_matches(mut events: EventReader<Match>, tiles: Query<&Tile>, mut commands: Commands) {
-    let start_delay = Duration::from_secs_f32(0.2);
+    let start_delay = Duration::from_secs_f32(0.1);
     let delay_between_gems = Duration::from_secs_f32(0.0);
     let delay_between_matches = Duration::from_secs_f32(0.2);
     let animation_time = Duration::from_secs_f32(0.1);
@@ -497,7 +505,7 @@ fn stop_matching(
     mut waiting_for: Local<usize>,
     mut events: EventReader<Match>,
     mut despawn_events: EventReader<DespawnEvent>,
-    mut state: ResMut<State<BoardState>>,
+    mut commands: Commands,
 ) {
     if !events.is_empty() {
         *any_matches = true;
@@ -510,13 +518,11 @@ fn stop_matching(
         .count();
 
     if *waiting_for == 0 {
-        state
-            .replace(if *any_matches {
-                BoardState::Falling
-            } else {
-                BoardState::Waiting
-            })
-            .unwrap();
+        commands.insert_resource(NextState(if *any_matches {
+            BoardState::Falling
+        } else {
+            BoardState::Waiting
+        }));
 
         // needs to be reset or else any_matches will continue to be true
         // the next time BoardState::Matching is entered
@@ -644,8 +650,8 @@ fn move_falling_gems(
 fn stop_falling(
     mut waiting_for: Local<usize>,
     mut fall_events: EventReader<Fall>,
-    mut state: ResMut<State<BoardState>>,
     mut tween_events: EventReader<TweenCompleted>,
+    mut commands: Commands,
 ) {
     *waiting_for += fall_events.iter().count();
 
@@ -655,7 +661,7 @@ fn stop_falling(
         .count();
 
     if *waiting_for == 0 {
-        state.replace(BoardState::Matching).unwrap();
+        commands.insert_resource(NextState(BoardState::Matching));
     }
 }
 
