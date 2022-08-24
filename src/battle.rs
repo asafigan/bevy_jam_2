@@ -52,8 +52,6 @@ fn find_enemy_animations(
                 .iter()
                 .find_map(|name| gltf.named_animations.get(*name));
 
-            dbg!(&gltf.named_animations);
-
             if let (Some(idle), Some(hurt), Some(attack)) = (idle, hurt, attack) {
                 commands.entity(entity).insert(EnemyAnimations {
                     idle: idle.clone(),
