@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use crate::animation::AnimationType;
 use crate::prefab::*;
+use crate::tween_untils::TweenType;
+use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason};
 use bevy::{
     asset::HandleId,
     input::{mouse::MouseButtonInput, ButtonState},
@@ -14,7 +15,8 @@ use bevy::{
     utils::HashSet,
 };
 use bevy_tweening::{
-    lens::TransformPositionLens, Animator, EaseFunction, Tween, TweenCompleted, TweeningType,
+    lens::{TransformPositionLens, TransformScaleLens},
+    Animator, Delay, EaseFunction, Tween, TweenCompleted, TweeningType,
 };
 
 pub struct BoardPlugin;
@@ -378,7 +380,7 @@ fn match_gems(
     gems: Query<&Gem>,
     mut events: EventWriter<Match>,
 ) {
-    // todo: combine linked matches
+    // todo: combine adjacent matches
 
     let board = boards.single();
 
@@ -425,29 +427,86 @@ fn match_gems(
                 };
             }
         }
+
         if current_match.tiles.len() >= 3 {
             matches.push(current_match);
         }
+    }
+
+    let mut index = 0;
+    while index < matches.len() {
+        let mut current = matches.remove(index);
+        let mut i = 0;
+        while i < matches.len() {
+            if !matches[i].tiles.is_disjoint(&current.tiles) {
+                let linked = matches.remove(i);
+                current.tiles.extend(linked.tiles);
+            } else {
+                i += 1;
+            }
+        }
+
+        matches.insert(index, current);
+        index += 1;
     }
 
     events.send_batch(matches.into_iter());
 }
 
 fn destroy_matches(mut events: EventReader<Match>, tiles: Query<&Tile>, mut commands: Commands) {
+    let start_delay = Duration::from_secs_f32(0.2);
+    let delay_between_gems = Duration::from_secs_f32(0.0);
+    let delay_between_matches = Duration::from_secs_f32(0.2);
+    let animation_time = Duration::from_secs_f32(0.1);
+
+    let mut delay = start_delay;
+
     for event in events.iter() {
         for &entity in &event.tiles {
             let tile = tiles.get(entity).unwrap();
-            commands.entity(tile.gem).despawn_recursive();
+            let tween = Tween::new(
+                EaseFunction::BounceIn,
+                TweeningType::Once,
+                animation_time,
+                TransformScaleLens {
+                    start: Vec3::splat(1.0),
+                    end: Vec3::splat(0.0),
+                },
+            );
+
+            commands
+                .entity(tile.gem)
+                .insert(Animator::new(Delay::new(delay).then(tween)))
+                .insert(
+                    DelayedDespawn::new(delay + animation_time)
+                        .with_reason(DespawnReason::DestroyGem),
+                );
+
+            delay += delay_between_gems;
         }
+
+        delay += delay_between_matches;
     }
 }
 
 fn stop_matching(
     mut any_matches: Local<bool>,
-    events: EventReader<Match>,
+    mut waiting_for: Local<usize>,
+    mut events: EventReader<Match>,
+    mut despawn_events: EventReader<DespawnEvent>,
     mut state: ResMut<State<BoardState>>,
 ) {
-    if events.is_empty() {
+    if !events.is_empty() {
+        *any_matches = true;
+    }
+
+    *waiting_for += events.iter().map(|e| e.tiles.len()).sum::<usize>();
+    *waiting_for -= despawn_events
+        .iter()
+        .filter(|e| e.reason == Some(DespawnReason::DestroyGem))
+        .count();
+
+    if *waiting_for == 0 {
         state
             .replace(if *any_matches {
                 BoardState::Falling
@@ -459,8 +518,6 @@ fn stop_matching(
         // needs to be reset or else any_matches will continue to be true
         // the next time BoardState::Matching is entered
         *any_matches = false;
-    } else {
-        *any_matches = true;
     }
 }
 
@@ -571,7 +628,7 @@ fn move_falling_gems(
             TransformPositionLens { start, end },
         );
 
-        tween.set_completed_event(AnimationType::Fall.into());
+        tween.set_completed_event(TweenType::Fall.into());
 
         commands.entity(gem).insert(Animator::new(tween));
 
@@ -591,7 +648,7 @@ fn stop_falling(
 
     *waiting_for -= tween_events
         .iter()
-        .filter(|e| AnimationType::try_from(e.user_data) == Ok(AnimationType::Fall))
+        .filter(|e| TweenType::try_from(e.user_data) == Ok(TweenType::Fall))
         .count();
 
     if *waiting_for == 0 {

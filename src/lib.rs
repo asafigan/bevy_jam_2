@@ -2,10 +2,12 @@ use bevy::{prelude::*, render::camera::ScalingMode};
 use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardPrefab, WorldCursor};
 use prefab::spawn;
+use utils::UtilsPlugin;
 
-mod animation;
 mod board;
 mod prefab;
+mod tween_untils;
+mod utils;
 
 pub fn build_app() -> App {
     let mut app = App::new();
@@ -21,6 +23,7 @@ pub fn build_app() -> App {
     .add_plugins(DefaultPlugins)
     .add_plugin(TweeningPlugin)
     .add_plugin(BoardPlugin)
+    .add_plugin(UtilsPlugin)
     .add_startup_system(setup);
 
     app
