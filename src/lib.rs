@@ -36,10 +36,10 @@ pub fn build_app() -> App {
     app
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let battle_layer = RenderLayers::layer(1);
-    let board_layer = RenderLayers::layer(2);
+const BATTLE_LAYER: RenderLayers = RenderLayers::layer(0);
+const BOARD_LAYER: RenderLayers = RenderLayers::layer(1);
 
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(Camera3dBundle {
             projection: OrthographicProjection {
@@ -61,7 +61,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(WorldCursor::default())
-        .insert(board_layer);
+        .insert(BOARD_LAYER);
 
     commands
         .spawn_bundle(Camera3dBundle {
@@ -69,11 +69,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
             ..default()
         })
-        .insert(battle_layer);
+        .insert(BATTLE_LAYER);
 
     spawn(
         BoardPrefab {
-            layers: board_layer,
+            layers: BOARD_LAYER,
             gems: BoardPrefab::random_gems(),
             transform: Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::splat(0.5)),
         },
@@ -82,8 +82,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     spawn(
         BattlePrefab {
-            environment: asset_server.load("scenes/battles/checkered-plane.glb#Scene0"),
-            layers: battle_layer,
+            environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
+            layers: BATTLE_LAYER,
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
             },

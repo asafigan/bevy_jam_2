@@ -17,6 +17,7 @@ impl Plugin for BattlePlugin {
             .add_system(play_idle_animation)
             .add_system(find_enemy_animations)
             .add_system(build_enemy_animators)
+            .add_system(remove_unlit_materials)
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
             .add_enter_system(
                 BoardState::Waiting,
@@ -166,6 +167,15 @@ fn play_idle_animation(
     }
 }
 
+fn remove_unlit_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
+    let ids: Vec<_> = materials.ids().collect();
+    for id in ids {
+        let mut material = materials.get_mut(&Handle::weak(id)).unwrap();
+
+        material.unlit = false;
+    }
+}
+
 fn start_player_turn(mut commands: Commands) {
     commands.insert_resource(NextState(BoardState::Ready));
 }
@@ -200,6 +210,23 @@ impl Prefab for BattlePrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let enemy = spawn(self.enemy.clone(), commands);
 
+        let light = commands
+            .spawn_bundle(PointLightBundle {
+                point_light: PointLight {
+                    shadows_enabled: true,
+                    range: 40.0,
+                    intensity: 100000.0,
+                    shadow_depth_bias: 0.001,
+                    ..default()
+                },
+                transform: Transform::from_xyz(10.0, 10.0, 10.0).with_rotation(
+                    Quat::from_rotation_x(-45_f32.to_radians())
+                        * Quat::from_rotation_y(-45_f32.to_radians()),
+                ),
+                ..default()
+            })
+            .id();
+
         commands
             .entity(entity)
             .insert_bundle(SceneBundle {
@@ -207,6 +234,7 @@ impl Prefab for BattlePrefab {
                 ..default()
             })
             .insert(self.layers)
+            .add_child(light)
             .add_child(enemy);
     }
 }

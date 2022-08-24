@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason};
+use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
 use bevy::{
     asset::HandleId,
@@ -748,6 +749,9 @@ impl Prefab for GemPrefab {
                     .with_scale(Vec3::splat(0.8)),
                 ..default()
             })
+            // bevy bug: lights don't respect layers and lights cast shadows on all layers
+            .insert(NotShadowCaster)
+            .insert(NotShadowReceiver)
             .id();
 
         commands
@@ -829,15 +833,20 @@ impl Prefab for BoardPrefab {
             commands,
         ));
 
-        let light = commands
-            .spawn_bundle(DirectionalLightBundle {
-                transform: Transform::from_rotation(
-                    Quat::from_rotation_x(-45_f32.to_radians())
-                        * Quat::from_rotation_y(-45_f32.to_radians()),
-                ),
-                ..default()
-            })
-            .id();
+        // bevy bug: can only have one directional light per world
+        // bevy bug: shadows for layer 0 only
+        // bevy bug: shadows affect every layer
+
+        // let light = commands
+        //     .spawn_bundle(DirectionalLightBundle {
+        //         directional_light: DirectionalLight { ..default() },
+        //         transform: Transform::from_rotation(
+        //             Quat::from_rotation_x(-45_f32.to_radians())
+        //                 * Quat::from_rotation_y(-45_f32.to_radians()),
+        //         ),
+        //         ..default()
+        //     })
+        //     .id();
 
         commands
             .entity(entity)
@@ -849,8 +858,8 @@ impl Prefab for BoardPrefab {
                 tiles: tiles.try_into().unwrap(),
             })
             .insert(self.layers)
-            .push_children(&children)
-            .add_child(light);
+            // .add_child(light)
+            .push_children(&children);
     }
 }
 
@@ -885,6 +894,9 @@ impl Prefab for TilePrefab {
                 transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
                 ..default()
             })
+            // bevy bug: lights don't respect layers and lights cast shadows on all layers
+            .insert(NotShadowCaster)
+            .insert(NotShadowReceiver)
             .id();
 
         commands
@@ -928,6 +940,9 @@ impl Prefab for TimerPrefab {
                 transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
                 ..default()
             })
+            // bevy bug: lights don't respect layers and lights cast shadows on all layers
+            .insert(NotShadowCaster)
+            .insert(NotShadowReceiver)
             .id();
 
         let progress = commands
