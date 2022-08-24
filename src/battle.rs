@@ -27,6 +27,9 @@ fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
 #[derive(Component)]
 struct EnemyAnimations {
     idle: Handle<AnimationClip>,
+    hurt: Handle<AnimationClip>,
+    death: Option<Handle<AnimationClip>>,
+    attack: Handle<AnimationClip>,
 }
 
 fn find_enemy_animations(
@@ -39,11 +42,25 @@ fn find_enemy_animations(
             let idle = ["Idle", "Flying"]
                 .iter()
                 .find_map(|name| gltf.named_animations.get(*name));
+            let hurt = ["HitRecieve"]
+                .iter()
+                .find_map(|name| gltf.named_animations.get(*name));
+            let death = ["Death"]
+                .iter()
+                .find_map(|name| gltf.named_animations.get(*name));
+            let attack = ["Bite_Front"]
+                .iter()
+                .find_map(|name| gltf.named_animations.get(*name));
 
-            if let Some(idle) = idle {
-                commands
-                    .entity(entity)
-                    .insert(EnemyAnimations { idle: idle.clone() });
+            dbg!(&gltf.named_animations);
+
+            if let (Some(idle), Some(hurt), Some(attack)) = (idle, hurt, attack) {
+                commands.entity(entity).insert(EnemyAnimations {
+                    idle: idle.clone(),
+                    hurt: hurt.clone(),
+                    death: death.cloned(),
+                    attack: attack.clone(),
+                });
             }
         }
     }
