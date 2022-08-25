@@ -1,15 +1,49 @@
 use std::time::Duration;
 
-use bevy::{prelude::*, render::view::RenderLayers};
+use bevy::{
+    asset::HandleId,
+    pbr::{NotShadowCaster, NotShadowReceiver},
+    prelude::{shape::RegularPolygon, *},
+    reflect::TypeUuid,
+    render::view::RenderLayers,
+    transform::TransformSystem,
+};
+
+use crate::prefab::*;
 
 pub struct UtilsPlugin;
 
 impl Plugin for UtilsPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<DespawnEvent>()
+            .add_startup_system(add_meshes)
+            .add_startup_system(add_materials)
             .add_system(delayed_despawn)
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                update_progress.before(TransformSystem::TransformPropagate),
+            )
             .add_system_to_stage(CoreStage::PostUpdate, propagate_render_layers);
     }
+}
+
+fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
+    let square = RegularPolygon {
+        radius: f32::sqrt(0.5),
+        sides: 4,
+    };
+
+    meshes.set_untracked(ProgressBarPrefab::mesh_handle(), square.into());
+}
+
+fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
+    materials.set_untracked(
+        ProgressBarPrefab::material_handle(),
+        StandardMaterial {
+            unlit: true,
+            ..default()
+        },
+    );
 }
 
 #[derive(Component, Default)]
@@ -94,5 +128,73 @@ fn propagate_render_layers(
                 children.extend(children_query.get(child).into_iter().flatten().cloned());
             }
         }
+    }
+}
+
+#[derive(Component)]
+pub struct ProgressBar {
+    pub percentage: f32,
+    progress: Entity,
+}
+
+#[derive(Default)]
+pub struct ProgressBarPrefab {
+    pub starting_percentage: f32,
+    pub transform: Transform,
+}
+
+impl Prefab for ProgressBarPrefab {
+    fn construct(&self, entity: Entity, commands: &mut Commands) {
+        let mesh = commands
+            .spawn_bundle(PbrBundle {
+                mesh: Self::mesh_handle(),
+                material: Self::material_handle(),
+                transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
+                ..default()
+            })
+            .insert(NotShadowCaster)
+            .insert(NotShadowReceiver)
+            .id();
+
+        let progress = commands
+            .spawn_bundle(SpatialBundle::default())
+            .add_child(mesh)
+            .id();
+
+        commands
+            .entity(entity)
+            .insert_bundle(SpatialBundle {
+                transform: self.transform,
+                ..default()
+            })
+            .insert(ProgressBar {
+                percentage: self.starting_percentage,
+                progress,
+            })
+            .add_child(progress);
+    }
+}
+
+const SQUARE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
+const SQUARE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
+
+impl ProgressBarPrefab {
+    fn mesh_handle() -> Handle<Mesh> {
+        Handle::weak(SQUARE_MESH_ID)
+    }
+
+    fn material_handle() -> Handle<StandardMaterial> {
+        Handle::weak(SQUARE_MATERIAL_ID)
+    }
+}
+
+fn update_progress(
+    progress_bars: Query<&ProgressBar, Changed<ProgressBar>>,
+    mut transforms: Query<&mut Transform>,
+) {
+    for progress_bar in &progress_bars {
+        let mut transform = transforms.get_mut(progress_bar.progress).unwrap();
+
+        transform.scale.x = progress_bar.percentage;
     }
 }

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
-use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason};
+use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab};
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
 use bevy::{
@@ -100,7 +100,6 @@ fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
     };
 
     meshes.set_untracked(TilePrefab::mesh_handle(), square.into());
-    meshes.set_untracked(TimerPrefab::mesh_handle(), square.into());
 }
 
 fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -116,7 +115,6 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 
     materials.set_untracked(TilePrefab::material_handle(), default());
-    materials.set_untracked(TimerPrefab::material_handle(), default());
 }
 
 #[derive(Component, Default)]
@@ -235,9 +233,9 @@ struct Swapping {
     timer: Timer,
 }
 
-fn reset_timer(mut timers: Query<&mut Transform, With<TimerProgress>>) {
-    for mut transform in &mut timers {
-        transform.scale.x = 1.0;
+fn reset_timer(mut timers: Query<&mut ProgressBar, With<TimerProgress>>) {
+    for mut progress_bar in &mut timers {
+        progress_bar.percentage = 1.0;
     }
 }
 
@@ -269,14 +267,14 @@ fn pickup_gem(
 fn update_timer(
     mut swapping: ResMut<Swapping>,
     time: Res<Time>,
-    mut timers: Query<&mut Transform, With<TimerProgress>>,
+    mut timers: Query<&mut ProgressBar, With<TimerProgress>>,
 ) {
     if swapping.swaps > 0 {
         swapping.timer.tick(time.delta());
     }
 
-    for mut transform in &mut timers {
-        transform.scale.x = swapping.timer.percent_left();
+    for mut progress_bar in &mut timers {
+        progress_bar.percentage = swapping.timer.percent_left();
     }
 }
 
@@ -719,9 +717,6 @@ const GEM_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000);
 const TILE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 1);
 const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 1);
 
-const TIMER_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
-const TIMER_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
-
 #[derive(Component)]
 pub struct Gem {
     pub mesh: Entity,
@@ -925,42 +920,14 @@ struct TimerPrefab {
     transform: Transform,
 }
 
-impl TimerPrefab {
-    fn mesh_handle() -> Handle<Mesh> {
-        Handle::weak(TIMER_MESH_ID)
-    }
-
-    fn material_handle() -> Handle<StandardMaterial> {
-        Handle::weak(TIMER_MATERIAL_ID)
-    }
-}
-
 impl Prefab for TimerPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mesh = commands
-            .spawn_bundle(PbrBundle {
-                mesh: Self::mesh_handle(),
-                material: Self::material_handle(),
-                transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
-                ..default()
-            })
-            // bevy bug: lights don't respect layers and lights cast shadows on all layers
-            .insert(NotShadowCaster)
-            .insert(NotShadowReceiver)
-            .id();
+        ProgressBarPrefab {
+            starting_percentage: 1.0,
+            transform: self.transform,
+        }
+        .construct(entity, commands);
 
-        let progress = commands
-            .spawn_bundle(SpatialBundle::default())
-            .insert(TimerProgress)
-            .add_child(mesh)
-            .id();
-
-        commands
-            .entity(entity)
-            .insert_bundle(SpatialBundle {
-                transform: self.transform,
-                ..default()
-            })
-            .add_child(progress);
+        commands.entity(entity).insert(TimerProgress);
     }
 }
