@@ -375,7 +375,7 @@ fn move_gem(
 }
 
 #[derive(Debug)]
-struct Match {
+pub struct Match {
     tiles: HashSet<Entity>,
     element: Element,
 }

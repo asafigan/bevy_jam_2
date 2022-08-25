@@ -1,10 +1,16 @@
-use bevy::{asset::HandleId, gltf::Gltf, prelude::*, render::view::RenderLayers};
+use bevy::{
+    asset::HandleId,
+    core_pipeline::clear_color::ClearColorConfig,
+    gltf::Gltf,
+    prelude::*,
+    render::{camera::ScalingMode, view::RenderLayers},
+};
 use iyes_loopless::prelude::*;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
-    board::BoardState,
+    board::{BoardPrefab, BoardState, WorldCursor},
     prefab::{spawn, Prefab},
 };
 
@@ -201,13 +207,56 @@ fn end_enemy_turn(mut commands: Commands) {
 }
 
 pub struct BattlePrefab {
-    pub layers: RenderLayers,
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
 }
 
+const ENVIRONMENT_LAYER: RenderLayers = RenderLayers::layer(0);
+const BOARD_LAYER: RenderLayers = RenderLayers::layer(1);
+
 impl Prefab for BattlePrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
+        commands
+            .spawn_bundle(Camera3dBundle {
+                projection: OrthographicProjection {
+                    scale: 3.0,
+                    scaling_mode: ScalingMode::FixedVertical(2.0),
+                    ..default()
+                }
+                .into(),
+                transform: Transform::from_translation(Vec3::Z * 10.0)
+                    .looking_at(Vec3::ZERO, Vec3::Y),
+                camera_3d: Camera3d {
+                    clear_color: ClearColorConfig::None,
+                    ..default()
+                },
+                camera: Camera {
+                    // renders after / on top of the main camera
+                    priority: 1,
+                    ..default()
+                },
+                ..default()
+            })
+            .insert(WorldCursor::default())
+            .insert(BOARD_LAYER);
+
+        commands
+            .spawn_bundle(Camera3dBundle {
+                transform: Transform::from_xyz(0.0, 4.0, 10.0)
+                    .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
+                ..default()
+            })
+            .insert(ENVIRONMENT_LAYER);
+
+        spawn(
+            BoardPrefab {
+                layers: BOARD_LAYER,
+                gems: BoardPrefab::random_gems(),
+                transform: Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::splat(0.5)),
+            },
+            commands,
+        );
+
         let enemy = spawn(self.enemy.clone(), commands);
 
         let light = commands
@@ -233,7 +282,7 @@ impl Prefab for BattlePrefab {
                 scene: self.environment.clone(),
                 ..default()
             })
-            .insert(self.layers)
+            .insert(ENVIRONMENT_LAYER)
             .add_child(light)
             .add_child(enemy);
     }
