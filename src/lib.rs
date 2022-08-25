@@ -38,6 +38,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
+                max_health: 20,
+                transform: default(),
             },
         },
         &mut commands,

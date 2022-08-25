@@ -373,10 +373,10 @@ fn move_gem(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Match {
-    tiles: HashSet<Entity>,
-    element: Element,
+    pub tiles: HashSet<Entity>,
+    pub element: Element,
 }
 
 #[derive(Clone, Copy)]

@@ -10,8 +10,9 @@ use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
-    board::{BoardPrefab, BoardState, WorldCursor},
+    board::{BoardPrefab, BoardState, Match, WorldCursor},
     prefab::{spawn, Prefab},
+    utils::{ProgressBar, ProgressBarPrefab},
 };
 
 pub struct BattlePlugin;
@@ -24,7 +25,14 @@ impl Plugin for BattlePlugin {
             .add_system(find_enemy_animations)
             .add_system(build_enemy_animators)
             .add_system(remove_unlit_materials)
+            .add_system(update_enemy_health_bar)
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(BattleState::PlayerTurn)
+                    .with_system(track_matches)
+                    .into(),
+            )
             .add_enter_system(
                 BoardState::End,
                 player_attack.run_in_state(BattleState::PlayerTurn),
@@ -182,18 +190,31 @@ fn remove_unlit_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 }
 
+#[derive(Default)]
+struct Matches(Vec<Match>);
+
 fn start_player_turn(mut commands: Commands) {
     commands.insert_resource(NextState(BoardState::Ready));
+    commands.insert_resource(Matches::default());
+}
+
+fn track_matches(mut events: EventReader<Match>, mut matches: ResMut<Matches>) {
+    matches.0.extend(events.iter().cloned());
 }
 
 fn player_attack(
-    mut enemies: Query<(&mut EnemyAnimator, &EnemyAnimations)>,
+    mut enemies: Query<(&mut Enemy, &mut EnemyAnimator, &EnemyAnimations)>,
     mut animation_players: Query<&mut AnimationPlayer>,
     mut commands: Commands,
+    matches: Res<Matches>,
 ) {
     commands.insert_resource(NextState(BattleState::EnemyTurn));
 
-    for (mut animator, animations) in &mut enemies {
+    for (mut enemy, mut animator, animations) in &mut enemies {
+        let damage = matches.0.iter().map(|x| x.tiles.len() as u32).sum();
+
+        enemy.current_health = enemy.current_health.saturating_sub(damage);
+
         let mut animation_player = animation_players
             .get_mut(animator.animation_player)
             .unwrap();
@@ -202,6 +223,18 @@ fn player_attack(
         animator.current_animation = Some(animations.hurt.clone());
     }
 }
+
+fn update_enemy_health_bar(
+    enemies: Query<&Enemy, Changed<Enemy>>,
+    mut progress_bars: Query<&mut ProgressBar>,
+) {
+    for enemy in &enemies {
+        let mut progress_bar = progress_bars.get_mut(enemy.health_bar).unwrap();
+
+        progress_bar.percentage = enemy.current_health as f32 / enemy.max_health as f32;
+    }
+}
+
 fn end_enemy_turn(mut commands: Commands) {
     commands.insert_resource(NextState(BattleState::PlayerTurn));
 }
@@ -290,24 +323,45 @@ impl Prefab for BattlePrefab {
 
 #[derive(Clone)]
 pub struct EnemyPrefab {
+    pub transform: Transform,
     pub kind: EnemyKind,
+    pub max_health: u32,
 }
 
 impl Prefab for EnemyPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
+        let health_bar = spawn(
+            ProgressBarPrefab {
+                starting_percentage: 1.0,
+                transform: self.transform
+                    * Transform::from_xyz(0.0, 0.2, 1.2).with_scale([1.0, 0.2, 1.0].into()),
+            },
+            commands,
+        );
+
         commands
             .entity(entity)
             .insert_bundle(SceneBundle {
                 scene: self.kind.scene_handle(),
+                transform: self.transform,
                 ..default()
             })
-            .insert(Enemy { kind: self.kind });
+            .insert(Enemy {
+                kind: self.kind,
+                max_health: self.max_health,
+                current_health: self.max_health,
+                health_bar,
+            })
+            .add_child(health_bar);
     }
 }
 
 #[derive(Component)]
 pub struct Enemy {
     kind: EnemyKind,
+    max_health: u32,
+    current_health: u32,
+    health_bar: Entity,
 }
 
 #[derive(Clone, Copy, EnumVariantNames, EnumIter, EnumCount, Display)]
