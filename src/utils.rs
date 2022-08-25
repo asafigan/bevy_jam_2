@@ -69,6 +69,10 @@ impl DelayedDespawn {
 
         self
     }
+
+    pub fn reason(&self) -> Option<DespawnReason> {
+        self.reason
+    }
 }
 
 pub struct DespawnEvent {
@@ -79,6 +83,7 @@ pub struct DespawnEvent {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DespawnReason {
     DestroyGem,
+    DestroyEnemy,
 }
 
 fn delayed_despawn(

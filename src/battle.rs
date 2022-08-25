@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{
     asset::HandleId,
     core_pipeline::clear_color::ClearColorConfig,
@@ -12,7 +14,8 @@ use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 use crate::{
     board::{BoardPrefab, BoardState, Match, WorldCursor},
     prefab::{spawn, Prefab},
-    utils::{ProgressBar, ProgressBarPrefab},
+    transitions::{FadeScreenPrefab, TransitionEnd},
+    utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab},
 };
 
 pub struct BattlePlugin;
@@ -26,11 +29,14 @@ impl Plugin for BattlePlugin {
             .add_system(build_enemy_animators)
             .add_system(remove_unlit_materials)
             .add_system(update_enemy_health_bar)
+            .add_system(kill_enemies)
+            .add_system(stop_board.run_not_in_state(BattleState::PlayerTurn))
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::PlayerTurn)
                     .with_system(track_matches)
+                    .with_system(start_outtro)
                     .into(),
             )
             .add_enter_system(
@@ -40,18 +46,34 @@ impl Plugin for BattlePlugin {
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::EnemyTurn)
+                    .with_system(start_outtro)
                     .with_system(end_enemy_turn)
+                    .into(),
+            )
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(BattleState::Outtro)
+                    .with_system(start_fade_out)
+                    .into(),
+            )
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(BattleState::TransitionOut)
+                    .with_system(end_transition_out)
                     .into(),
             );
     }
 }
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-enum BattleState {
+pub enum BattleState {
+    None,
     Intro,
     PlayerTurn,
     EnemyTurn,
-    Outro,
+    Outtro,
+    TransitionOut,
+    End,
 }
 
 struct EnemyModels {
@@ -62,6 +84,12 @@ fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
     let models = asset_server.load_folder("models/enemies").unwrap();
 
     commands.insert_resource(EnemyModels { models });
+}
+
+fn stop_board(mut commands: Commands, state: Res<CurrentState<BoardState>>) {
+    if state.0 != BoardState::None {
+        commands.insert_resource(NextState(BoardState::None));
+    }
 }
 
 #[derive(Component)]
@@ -171,7 +199,7 @@ fn play_idle_animation(
             .unwrap_or_default();
 
         if (no_animation || animation_ended)
-            && animator.current_animation.as_ref() != Some(&enemy_animations.idle)
+            && (animator.current_animation.as_ref() != Some(&enemy_animations.idle))
         {
             animator.current_animation = Some(enemy_animations.idle.clone());
             animation_player
@@ -224,6 +252,47 @@ fn player_attack(
     }
 }
 
+fn kill_enemies(
+    mut enemies: Query<(Entity, &Enemy, &EnemyAnimations, &mut EnemyAnimator)>,
+    mut animation_players: Query<&mut AnimationPlayer>,
+    animations: Res<Assets<AnimationClip>>,
+    mut commands: Commands,
+) {
+    for (entity, enemy, enemy_animations, mut animator) in &mut enemies {
+        if enemy.current_health == 0 {
+            let mut animation_player = animation_players
+                .get_mut(animator.animation_player)
+                .unwrap();
+
+            let kill_time = if let Some(animation) = &enemy_animations.death {
+                animation_player.play(animation.clone());
+
+                animations.get(animation).unwrap().duration()
+            } else {
+                animation_player.pause();
+
+                0.0
+            };
+
+            // prevents enemy from returning to idle at the end of the animation
+            commands
+                .entity(entity)
+                .remove::<EnemyAnimator>()
+                .remove::<Enemy>()
+                .insert(
+                    DelayedDespawn::from_seconds(kill_time + 1.0)
+                        .with_reason(DespawnReason::DestroyEnemy),
+                );
+        }
+    }
+}
+
+fn start_outtro(enemies: Query<&Enemy>, mut commands: Commands) {
+    if enemies.iter().count() == 0 {
+        commands.insert_resource(NextState(BattleState::Outtro));
+    }
+}
+
 fn update_enemy_health_bar(
     enemies: Query<&Enemy, Changed<Enemy>>,
     mut progress_bars: Query<&mut ProgressBar>,
@@ -235,8 +304,34 @@ fn update_enemy_health_bar(
     }
 }
 
-fn end_enemy_turn(mut commands: Commands) {
-    commands.insert_resource(NextState(BattleState::PlayerTurn));
+fn end_enemy_turn(enemies: Query<&Enemy>, mut commands: Commands) {
+    if enemies.iter().count() == 0 {
+        commands.insert_resource(NextState(BattleState::Outtro));
+    } else {
+        commands.insert_resource(NextState(BattleState::PlayerTurn));
+    }
+}
+
+fn start_fade_out(delays: Query<&DelayedDespawn>, mut commands: Commands) {
+    let waiting_for_enemy_death = delays
+        .iter()
+        .any(|x| x.reason() == Some(DespawnReason::DestroyEnemy));
+    if !waiting_for_enemy_death {
+        spawn(
+            FadeScreenPrefab {
+                duration: Duration::from_secs(1),
+            },
+            &mut commands,
+        );
+
+        commands.insert_resource(NextState(BattleState::TransitionOut));
+    }
+}
+
+fn end_transition_out(mut events: EventReader<TransitionEnd>, mut commands: Commands) {
+    if events.iter().count() > 0 {
+        commands.insert_resource(NextState(BattleState::End));
+    }
 }
 
 pub struct BattlePrefab {
