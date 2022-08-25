@@ -195,33 +195,25 @@ fn track_tile_hover(
 }
 
 fn change_gem_material(
-    mut updated: Local<HashSet<Entity>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut events: EventReader<TileEvent>,
     tiles: Query<&Tile>,
     gems: Query<&Gem>,
     mut meshes: Query<&mut Handle<StandardMaterial>>,
     state: Res<CurrentState<BoardState>>,
 ) {
-    // todo: bug: if the gem you grabbed is placed above matches and then falls it's material will not be reset
-    // also the material needs to be reset during the match and fall state
-
-    updated.extend(events.iter().map(|x| x.tile));
-
-    if state.0 == BoardState::Ready {
-        for entity in updated.drain() {
-            let tile = tiles.get(entity).unwrap();
-            let gem = gems.get(tile.gem).unwrap();
-            let mut material = meshes.get_mut(gem.mesh).unwrap();
-            *material = if tile.mouse_in {
-                materials.add(StandardMaterial {
-                    base_color: gem.element.color(),
-                    emissive: gem.element.color() * 0.5,
-                    ..gem.element.material()
-                })
-            } else {
-                gem.element.material_handle()
-            };
+    for tile in &tiles {
+        if let Ok(gem) = gems.get(tile.gem) {
+            if let Ok(mut material) = meshes.get_mut(gem.mesh) {
+                *material = if (state.0 == BoardState::Ready && tile.mouse_in) || gem.holding {
+                    materials.add(StandardMaterial {
+                        base_color: gem.element.color(),
+                        emissive: gem.element.color() * 0.5,
+                        ..gem.element.material()
+                    })
+                } else {
+                    gem.element.material_handle()
+                };
+            }
         }
     }
 }
@@ -242,6 +234,7 @@ fn reset_timer(mut timers: Query<&mut ProgressBar, With<TimerProgress>>) {
 fn pickup_gem(
     mut events: EventReader<MouseButtonInput>,
     tiles: Query<(Entity, &Tile)>,
+    mut gems: Query<&mut Gem>,
     mut commands: Commands,
 ) {
     let start_pickup = events
@@ -259,6 +252,10 @@ fn pickup_gem(
                     timer: Timer::from_seconds(9.0, false),
                 });
                 commands.insert_resource(NextState(BoardState::Swapping));
+
+                let mut gem = gems.get_mut(tile.gem).unwrap();
+
+                gem.holding = true;
             }
         }
     }
@@ -346,13 +343,14 @@ fn drop_gem(
 }
 
 fn return_gems(
-    mut gems: Query<&mut Transform, (Without<Tile>, With<Gem>)>,
+    mut gems: Query<(&mut Gem, &mut Transform), Without<Tile>>,
     tiles: Query<&Transform, With<Tile>>,
     swapping: Res<Swapping>,
 ) {
     let transform = tiles.get(swapping.current_tile).unwrap();
-    let mut gem = gems.get_mut(swapping.gem).unwrap();
-    gem.translation = transform.translation;
+    let (mut gem, mut gem_transform) = gems.get_mut(swapping.gem).unwrap();
+    gem_transform.translation = transform.translation;
+    gem.holding = false;
 }
 
 fn move_gem(
@@ -721,6 +719,7 @@ const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10
 pub struct Gem {
     pub mesh: Entity,
     pub element: Element,
+    pub holding: bool,
 }
 
 pub struct GemPrefab {
@@ -762,6 +761,7 @@ impl Prefab for GemPrefab {
             .insert(Gem {
                 mesh,
                 element: self.element,
+                holding: false,
             })
             .add_child(mesh);
     }
