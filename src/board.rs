@@ -34,13 +34,13 @@ impl Plugin for BoardPlugin {
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(change_gem_material)
-            .add_loopless_state(BoardState::Waiting)
+            .add_loopless_state(BoardState::None)
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_to_stage(
                 CoreStage::PreUpdate,
                 track_tile_hover.after(update_world_cursors),
             )
-            .add_enter_system(BoardState::Waiting, reset_timer)
+            .add_enter_system(BoardState::Ready, reset_timer)
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BoardState::Ready)
@@ -76,11 +76,12 @@ impl Plugin for BoardPlugin {
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 pub enum BoardState {
-    Waiting,
+    None,
     Ready,
     Swapping,
     Matching,
     Falling,
+    End,
 }
 
 fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
@@ -522,7 +523,7 @@ fn stop_matching(
         commands.insert_resource(NextState(if *any_matches {
             BoardState::Falling
         } else {
-            BoardState::Waiting
+            BoardState::End
         }));
 
         // needs to be reset or else any_matches will continue to be true

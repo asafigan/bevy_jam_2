@@ -26,7 +26,7 @@ impl Plugin for BattlePlugin {
             .add_system(remove_unlit_materials)
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
             .add_enter_system(
-                BoardState::Waiting,
+                BoardState::End,
                 player_attack.run_in_state(BattleState::PlayerTurn),
             )
             .add_system_set(
