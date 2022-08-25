@@ -214,7 +214,7 @@ impl Prefab for BattlePrefab {
             .spawn_bundle(PointLightBundle {
                 point_light: PointLight {
                     shadows_enabled: true,
-                    range: 40.0,
+                    range: 50.0,
                     intensity: 100000.0,
                     shadow_depth_bias: 0.001,
                     ..default()

@@ -217,8 +217,8 @@ fn change_gem_material(
             *material = if tile.mouse_in {
                 materials.add(StandardMaterial {
                     base_color: gem.element.color(),
-                    emissive: gem.element.color(),
-                    ..default()
+                    emissive: gem.element.color() * 0.5,
+                    ..gem.element.material()
                 })
             } else {
                 gem.element.material_handle()
@@ -693,7 +693,10 @@ impl Element {
 
     fn material(&self) -> StandardMaterial {
         StandardMaterial {
-            base_color: self.color(),
+            base_color: self.color() * 0.6,
+            metallic: 0.0,
+            reflectance: 0.1,
+            perceptual_roughness: 0.3,
             ..Default::default()
         }
     }
@@ -702,9 +705,9 @@ impl Element {
         match self {
             Element::Life => Color::PINK,
             Element::Death => Color::DARK_GRAY,
-            Element::Water => Color::MIDNIGHT_BLUE,
+            Element::Water => Color::BLUE * 0.8,
             Element::Fire => Color::ORANGE_RED,
-            Element::Nature => Color::DARK_GREEN,
+            Element::Nature => Color::GREEN * 0.8,
             Element::Electric => Color::YELLOW,
         }
     }

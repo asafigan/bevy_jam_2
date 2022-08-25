@@ -23,7 +23,7 @@ pub fn build_app() -> App {
         ..Default::default()
     })
     .insert_resource(AmbientLight {
-        brightness: 0.5,
+        brightness: 2.0,
         ..default()
     })
     .add_plugins(DefaultPlugins)
