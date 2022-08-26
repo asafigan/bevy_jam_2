@@ -16,7 +16,7 @@ use crate::{
     player::Player,
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
-    utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab},
+    utils::{DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab},
 };
 
 pub struct BattlePlugin;
@@ -24,6 +24,7 @@ pub struct BattlePlugin;
 impl Plugin for BattlePlugin {
     fn build(&self, app: &mut App) {
         app.add_loopless_state(BattleState::None)
+            .add_event::<BattleCleanedUp>()
             .add_startup_system(load_enemy_models)
             .add_system(play_idle_animation)
             .add_system(find_enemy_animations)
@@ -66,7 +67,8 @@ impl Plugin for BattlePlugin {
                     .run_in_state(BattleState::Outtro)
                     .with_system(fade_out)
                     .into(),
-            );
+            )
+            .add_enter_system(BattleState::CleanedUp, send_cleanup_event);
     }
 }
 
@@ -78,6 +80,7 @@ pub enum BattleState {
     EnemyTurn,
     Outtro,
     End,
+    CleanedUp,
 }
 
 pub struct BattleResources {
@@ -93,8 +96,14 @@ impl BattleResources {
 
     pub fn clean_up_system(mut resources: ResMut<Self>, mut commands: Commands) {
         resources.clean_up(&mut commands);
-        commands.insert_resource(NextState(BattleState::None))
+        commands.insert_resource(NextState(BattleState::CleanedUp))
     }
+}
+
+pub struct BattleCleanedUp;
+
+fn send_cleanup_event(mut events: EventWriter<BattleCleanedUp>) {
+    events.send(BattleCleanedUp);
 }
 
 struct EnemyModels {
@@ -364,7 +373,7 @@ fn update_player_health_bar(
 ) {
     for mut health_bar in &mut progress_bars {
         if player.is_changed() || health_bar.is_added() {
-            health_bar.percentage = dbg!(player.current_health) as f32 / player.max_health as f32;
+            health_bar.percentage = player.current_health as f32 / player.max_health as f32;
         }
     }
 }
@@ -564,7 +573,7 @@ impl Prefab for EnemyPrefab {
                 kind: self.kind,
                 max_health: self.max_health,
                 current_health: self.max_health,
-                attack: dbg!(self.attack),
+                attack: self.attack,
                 health_bar,
             })
             .add_child(health_bar);

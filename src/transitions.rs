@@ -1,14 +1,9 @@
 use bevy::{
     asset::HandleId,
     core_pipeline::clear_color::ClearColorConfig,
-    ecs::system::Command,
-    prelude::{
-        shape::{Cube, Quad, RegularPolygon},
-        *,
-    },
+    prelude::{shape::Quad, *},
     reflect::TypeUuid,
     render::view::RenderLayers,
-    sprite::Mesh2dHandle,
 };
 use bevy_tweening::{lens::ColorMaterialColorLens, *};
 use std::time::Duration;
@@ -50,8 +45,16 @@ pub struct TransitionEnd {
 }
 
 #[derive(Component)]
-struct Transition {
+pub struct Transition {
     timer: Timer,
+}
+
+impl Transition {
+    pub fn clean_up_system(transitions: Query<Entity, With<Transition>>, mut commands: Commands) {
+        for entity in &transitions {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +98,7 @@ impl Prefab for FadeScreenPrefab {
                 },
                 ..default()
             })
+            .insert(UiCameraConfig { show_ui: false })
             .id();
 
         let duration = self.duration;
@@ -133,11 +137,7 @@ impl Prefab for FadeScreenPrefab {
                 ))
                 .id();
 
-            AddChild {
-                parent: entity,
-                child: overlay,
-            }
-            .write(world);
+            world.entity_mut(entity).push_children(&[overlay]);
         });
 
         commands
