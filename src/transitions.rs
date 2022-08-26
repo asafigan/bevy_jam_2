@@ -46,7 +46,7 @@ fn add_materials(mut materials: ResMut<Assets<ColorMaterial>>) {
 }
 
 pub struct TransitionEnd {
-    transition: Entity,
+    pub transition: Entity,
 }
 
 #[derive(Component)]
@@ -110,7 +110,7 @@ impl Prefab for FadeScreenPrefab {
             };
 
             let material_handle = materials.add(ColorMaterial {
-                color: Color::NONE,
+                color: start,
                 ..default()
             });
 
@@ -128,20 +128,7 @@ impl Prefab for FadeScreenPrefab {
                         EaseFunction::QuarticOut,
                         TweeningType::Once,
                         duration,
-                        ColorMaterialColorLens {
-                            start: Color::RgbaLinear {
-                                red: 0.0,
-                                green: 0.0,
-                                blue: 0.0,
-                                alpha: 0.0,
-                            },
-                            end: Color::RgbaLinear {
-                                red: 0.0,
-                                green: 0.0,
-                                blue: 0.0,
-                                alpha: 1.0,
-                            },
-                        },
+                        ColorMaterialColorLens { start, end },
                     )),
                 ))
                 .id();

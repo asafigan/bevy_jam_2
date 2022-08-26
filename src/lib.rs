@@ -46,14 +46,14 @@ fn start_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
             environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
-                max_health: 0,
+                max_health: 1,
                 transform: default(),
             },
         },
         &mut commands,
     );
 
-    commands.insert_resource(NextState(BattleState::PlayerTurn));
+    commands.insert_resource(NextState(BattleState::Intro));
 }
 
 fn log_states<T: Hash + Eq + Clone + Sync + Send + 'static + Debug>(state: Res<CurrentState<T>>) {

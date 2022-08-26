@@ -29,14 +29,20 @@ impl Plugin for BattlePlugin {
             .add_system(build_enemy_animators)
             .add_system(remove_unlit_materials)
             .add_system(update_enemy_health_bar)
-            .add_system(kill_enemies)
             .add_system(stop_board.run_not_in_state(BattleState::PlayerTurn))
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(BattleState::Intro)
+                    .with_system(intro)
+                    .into(),
+            )
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::PlayerTurn)
                     .with_system(track_matches)
                     .with_system(start_outtro)
+                    .with_system(kill_enemies)
                     .into(),
             )
             .add_enter_system(
@@ -48,6 +54,7 @@ impl Plugin for BattlePlugin {
                     .run_in_state(BattleState::EnemyTurn)
                     .with_system(start_outtro)
                     .with_system(end_enemy_turn)
+                    .with_system(kill_enemies)
                     .into(),
             )
             .add_system_set(
@@ -225,6 +232,30 @@ fn remove_unlit_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
         let mut material = materials.get_mut(&Handle::weak(id)).unwrap();
 
         material.unlit = false;
+    }
+}
+
+fn intro(mut started: Local<bool>, mut events: EventReader<TransitionEnd>, mut commands: Commands) {
+    if *started {
+        for event in events.iter() {
+            commands.entity(event.transition).despawn_recursive();
+
+            commands.insert_resource(NextState(BattleState::PlayerTurn));
+
+            *started = false;
+        }
+    } else {
+        spawn(
+            FadeScreenPrefab {
+                direction: TransitionDirection::In,
+                color: Color::BLACK,
+                delay: default(),
+                duration: Duration::from_secs(1),
+            },
+            &mut commands,
+        );
+
+        *started = true;
     }
 }
 
