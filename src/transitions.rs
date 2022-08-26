@@ -1,5 +1,17 @@
-use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*, render::view::RenderLayers};
-use std::{marker::PhantomData, time::Duration};
+use bevy::{
+    asset::HandleId,
+    core_pipeline::clear_color::ClearColorConfig,
+    ecs::system::Command,
+    prelude::{
+        shape::{Cube, Quad, RegularPolygon},
+        *,
+    },
+    reflect::TypeUuid,
+    render::view::RenderLayers,
+    sprite::Mesh2dHandle,
+};
+use bevy_tweening::{lens::ColorMaterialColorLens, *};
+use std::time::Duration;
 
 use crate::prefab::Prefab;
 
@@ -8,8 +20,29 @@ pub struct TransitionPlugin;
 impl Plugin for TransitionPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<TransitionEnd>()
+            .add_startup_system(add_meshes)
+            .add_startup_system(add_materials)
             .add_system(update_transitions);
     }
+}
+
+fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
+    let square = Quad {
+        size: Vec2::splat(1.0),
+        ..Default::default()
+    };
+
+    meshes.set_untracked(FadeScreenPrefab::mesh_handle(), square.into());
+}
+
+fn add_materials(mut materials: ResMut<Assets<ColorMaterial>>) {
+    materials.set_untracked(
+        FadeScreenPrefab::material_handle(),
+        ColorMaterial {
+            color: Color::NONE,
+            ..default()
+        },
+    );
 }
 
 pub struct TransitionEnd {
@@ -53,15 +86,76 @@ impl Prefab for FadeScreenPrefab {
                 },
                 ..default()
             })
-            .insert(TRANSITION_LAYER)
             .id();
+
+        let duration = self.duration;
+        commands.add(move |world: &mut World| {
+            let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
+
+            let material_handle = materials.add(ColorMaterial {
+                color: Color::NONE,
+                ..default()
+            });
+
+            let overlay = world
+                .spawn()
+                .insert_bundle(ColorMesh2dBundle {
+                    mesh: FadeScreenPrefab::mesh_handle().into(),
+                    material: material_handle.clone(),
+                    transform: Transform::from_scale(Vec3::splat(100000.0)),
+                    ..default()
+                })
+                .insert(AssetAnimator::new(
+                    material_handle,
+                    Tween::new(
+                        EaseFunction::QuarticOut,
+                        TweeningType::Once,
+                        duration,
+                        ColorMaterialColorLens {
+                            start: Color::RgbaLinear {
+                                red: 0.0,
+                                green: 0.0,
+                                blue: 0.0,
+                                alpha: 0.0,
+                            },
+                            end: Color::RgbaLinear {
+                                red: 0.0,
+                                green: 0.0,
+                                blue: 0.0,
+                                alpha: 1.0,
+                            },
+                        },
+                    ),
+                ))
+                .id();
+            println!("add");
+            AddChild {
+                parent: entity,
+                child: overlay,
+            }
+            .write(world);
+        });
 
         commands
             .entity(entity)
-            .add_child(camera)
+            .insert_bundle(SpatialBundle::default())
             .insert(Transition {
                 timer: Timer::new(self.duration, false),
             })
-            .insert(TRANSITION_LAYER);
+            .insert(TRANSITION_LAYER)
+            .add_child(camera);
+    }
+}
+
+const FADE_TRANSITION_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 3);
+const FADE_TRANSITION_MATERIAL_ID: HandleId = HandleId::new(ColorMaterial::TYPE_UUID, 10_000 - 3);
+
+impl FadeScreenPrefab {
+    fn mesh_handle() -> Handle<Mesh> {
+        Handle::weak(FADE_TRANSITION_MESH_ID)
+    }
+
+    fn material_handle() -> Handle<ColorMaterial> {
+        Handle::weak(FADE_TRANSITION_MATERIAL_ID)
     }
 }

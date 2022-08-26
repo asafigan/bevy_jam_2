@@ -9,7 +9,7 @@ edition = "2021"
 
 bevy = { version = "0.8", features = ["dynamic"] }
 fastrand = "1"
-bevy_tweening = "0.5"
+bevy_tweening = { version = "0.5", features = ["bevy_asset"] }
 iyes_loopless = "0.7"
 strum_macros = "0.24"
 strum = "0.24"
