@@ -48,11 +48,16 @@ pub fn build_app() -> App {
 
 fn start_battle(
     mut enemy_health: Local<u32>,
+    mut enemy_attack: Local<u32>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
     if *enemy_health == 0 {
         *enemy_health = 20;
+    }
+
+    if *enemy_attack == 0 {
+        *enemy_attack = 10;
     }
 
     spawn(
@@ -61,6 +66,7 @@ fn start_battle(
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
                 max_health: *enemy_health,
+                attack: *enemy_attack,
                 transform: default(),
             },
         },
@@ -68,6 +74,7 @@ fn start_battle(
     );
 
     *enemy_health = (*enemy_health as f32 * 1.2) as u32;
+    *enemy_attack += 2;
 
     commands.insert_resource(NextState(BattleState::Intro));
 }

@@ -45,12 +45,14 @@ impl Plugin for BattlePlugin {
                     .with_system(track_matches)
                     .with_system(start_outtro)
                     .with_system(kill_enemies)
+                    .with_system(end_player_turn.run_in_state(BoardState::End))
                     .into(),
             )
             .add_enter_system(
                 BoardState::End,
                 player_attack.run_in_state(BattleState::PlayerTurn),
             )
+            .add_enter_system(BattleState::EnemyTurn, enemies_attack)
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::EnemyTurn)
@@ -276,22 +278,31 @@ fn track_matches(mut events: EventReader<Match>, mut matches: ResMut<Matches>) {
 fn player_attack(
     mut enemies: Query<(&mut Enemy, &mut EnemyAnimator, &EnemyAnimations)>,
     mut animation_players: Query<&mut AnimationPlayer>,
-    mut commands: Commands,
     matches: Res<Matches>,
 ) {
-    commands.insert_resource(NextState(BattleState::EnemyTurn));
+    let damage = matches.0.iter().map(|x| x.tiles.len() as u32).sum();
 
-    for (mut enemy, mut animator, animations) in &mut enemies {
-        let damage = matches.0.iter().map(|x| x.tiles.len() as u32).sum();
+    if damage != 0 {
+        for (mut enemy, mut animator, animations) in &mut enemies {
+            enemy.current_health = enemy.current_health.saturating_sub(damage);
 
-        enemy.current_health = enemy.current_health.saturating_sub(damage);
+            let mut animation_player = animation_players
+                .get_mut(animator.animation_player)
+                .unwrap();
 
-        let mut animation_player = animation_players
-            .get_mut(animator.animation_player)
-            .unwrap();
+            animation_player.play(animations.hurt.clone());
+            animator.current_animation = Some(animations.hurt.clone());
+        }
+    }
+}
 
-        animation_player.play(animations.hurt.clone());
-        animator.current_animation = Some(animations.hurt.clone());
+fn end_player_turn(mut commands: Commands, enemies: Query<(&EnemyAnimator, &EnemyAnimations)>) {
+    let enemy_animations_finished = enemies.iter().all(|(animator, animations)| {
+        animator.current_animation.as_ref() == Some(&animations.idle)
+    });
+
+    if enemy_animations_finished {
+        commands.insert_resource(NextState(BattleState::EnemyTurn));
     }
 }
 
@@ -348,19 +359,44 @@ fn update_enemy_health_bar(
 }
 
 fn update_player_health_bar(
-    mut progress_bars: Query<&mut ProgressBar, With<Player>>,
+    mut progress_bars: Query<&mut ProgressBar, With<PlayerHealthBar>>,
     player: Res<Player>,
 ) {
     for mut health_bar in &mut progress_bars {
-        health_bar.percentage = player.current_health as f32 / player.max_health as f32;
+        if player.is_changed() || health_bar.is_added() {
+            health_bar.percentage = dbg!(player.current_health) as f32 / player.max_health as f32;
+        }
     }
 }
 
-fn end_enemy_turn(enemies: Query<&Enemy>, mut commands: Commands) {
-    if enemies.iter().count() == 0 {
-        commands.insert_resource(NextState(BattleState::Outtro));
-    } else {
-        commands.insert_resource(NextState(BattleState::PlayerTurn));
+fn enemies_attack(
+    mut enemies: Query<(&Enemy, &mut EnemyAnimator, &EnemyAnimations)>,
+    mut animation_players: Query<&mut AnimationPlayer>,
+    mut player: ResMut<Player>,
+) {
+    for (enemy, mut animator, animations) in &mut enemies {
+        player.current_health = player.current_health.saturating_sub(enemy.attack);
+
+        let mut animation_player = animation_players
+            .get_mut(animator.animation_player)
+            .unwrap();
+
+        animation_player.play(animations.attack.clone());
+        animator.current_animation = Some(animations.attack.clone());
+    }
+}
+
+fn end_enemy_turn(mut commands: Commands, enemies: Query<(&EnemyAnimator, &EnemyAnimations)>) {
+    let enemy_animations_finished = enemies.iter().all(|(animator, animations)| {
+        animator.current_animation.as_ref() == Some(&animations.idle)
+    });
+
+    if enemy_animations_finished {
+        if enemies.iter().count() == 0 {
+            commands.insert_resource(NextState(BattleState::Outtro));
+        } else {
+            commands.insert_resource(NextState(BattleState::PlayerTurn));
+        }
     }
 }
 
@@ -503,6 +539,7 @@ pub struct EnemyPrefab {
     pub transform: Transform,
     pub kind: EnemyKind,
     pub max_health: u32,
+    pub attack: u32,
 }
 
 impl Prefab for EnemyPrefab {
@@ -527,6 +564,7 @@ impl Prefab for EnemyPrefab {
                 kind: self.kind,
                 max_health: self.max_health,
                 current_health: self.max_health,
+                attack: dbg!(self.attack),
                 health_bar,
             })
             .add_child(health_bar);
@@ -538,6 +576,7 @@ pub struct Enemy {
     kind: EnemyKind,
     max_health: u32,
     current_health: u32,
+    attack: u32,
     health_bar: Entity,
 }
 
