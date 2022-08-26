@@ -1,8 +1,8 @@
-use battle::{BattlePlugin, BattlePrefab, BattleState, EnemyKind, EnemyPrefab};
+use battle::{BattlePlugin, BattlePrefab, BattleResources, BattleState, EnemyKind, EnemyPrefab};
 use bevy::prelude::*;
 use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardState};
-use iyes_loopless::state::CurrentState;
+use iyes_loopless::prelude::*;
 use prefab::spawn;
 use std::{fmt::Debug, hash::Hash};
 use transitions::TransitionPlugin;
@@ -32,14 +32,15 @@ pub fn build_app() -> App {
     .add_plugin(UtilsPlugin)
     .add_plugin(BattlePlugin)
     .add_plugin(TransitionPlugin)
-    .add_startup_system(setup)
     .add_system(log_states::<BoardState>)
-    .add_system(log_states::<BattleState>);
+    .add_system(log_states::<BattleState>)
+    .add_enter_system(BattleState::End, BattleResources::clean_up_system)
+    .add_enter_system(BattleState::None, start_battle);
 
     app
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn start_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
     spawn(
         BattlePrefab {
             environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
@@ -51,6 +52,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         &mut commands,
     );
+
+    commands.insert_resource(NextState(BattleState::PlayerTurn));
 }
 
 fn log_states<T: Hash + Eq + Clone + Sync + Send + 'static + Debug>(state: Res<CurrentState<T>>) {

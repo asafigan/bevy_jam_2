@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab};
+use bevy::ecs::system::AsSystemLabel;
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
 use bevy::{
@@ -38,7 +39,9 @@ impl Plugin for BoardPlugin {
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_to_stage(
                 CoreStage::PreUpdate,
-                track_tile_hover.after(update_world_cursors),
+                track_tile_hover
+                    .run_not_in_state(BoardState::None)
+                    .after(update_world_cursors.as_system_label()),
             )
             .add_enter_system(BoardState::Ready, reset_timer)
             .add_system_set(

@@ -54,6 +54,12 @@ struct Transition {
     timer: Timer,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TransitionDirection {
+    In,
+    Out,
+}
+
 fn update_transitions(
     mut transitions: Query<(Entity, &mut Transition)>,
     mut events: EventWriter<TransitionEnd>,
@@ -67,6 +73,8 @@ fn update_transitions(
 }
 
 pub struct FadeScreenPrefab {
+    pub direction: TransitionDirection,
+    pub color: Color,
     pub delay: Duration,
     pub duration: Duration,
 }
@@ -91,8 +99,15 @@ impl Prefab for FadeScreenPrefab {
 
         let duration = self.duration;
         let delay = self.delay;
+        let direction = self.direction;
+        let color = self.color;
         commands.add(move |world: &mut World| {
             let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
+
+            let (start, end) = match direction {
+                TransitionDirection::In => (color, Color::NONE),
+                TransitionDirection::Out => (Color::NONE, color),
+            };
 
             let material_handle = materials.add(ColorMaterial {
                 color: Color::NONE,

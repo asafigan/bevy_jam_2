@@ -14,7 +14,7 @@ use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 use crate::{
     board::{BoardPrefab, BoardState, Match, WorldCursor},
     prefab::{spawn, Prefab},
-    transitions::{FadeScreenPrefab, TransitionEnd},
+    transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
     utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab},
 };
 
@@ -22,7 +22,7 @@ pub struct BattlePlugin;
 
 impl Plugin for BattlePlugin {
     fn build(&self, app: &mut App) {
-        app.add_loopless_state(BattleState::PlayerTurn)
+        app.add_loopless_state(BattleState::None)
             .add_startup_system(load_enemy_models)
             .add_system(play_idle_animation)
             .add_system(find_enemy_animations)
@@ -67,6 +67,23 @@ pub enum BattleState {
     EnemyTurn,
     Outtro,
     End,
+}
+
+pub struct BattleResources {
+    pub root_entities: Vec<Entity>,
+}
+
+impl BattleResources {
+    pub fn clean_up(&mut self, commands: &mut Commands) {
+        for entity in self.root_entities.drain(..) {
+            commands.entity(entity).despawn_recursive()
+        }
+    }
+
+    pub fn clean_up_system(mut resources: ResMut<Self>, mut commands: Commands) {
+        resources.clean_up(&mut commands);
+        commands.insert_resource(NextState(BattleState::None))
+    }
 }
 
 struct EnemyModels {
@@ -309,19 +326,22 @@ fn fade_out(
     mut started: Local<bool>,
     delays: Query<&DelayedDespawn>,
     mut events: EventReader<TransitionEnd>,
+    mut resources: ResMut<BattleResources>,
     mut commands: Commands,
 ) {
     let waiting_for_enemy_death = delays
         .iter()
         .any(|x| x.reason() == Some(DespawnReason::DestroyEnemy));
     if !*started && !waiting_for_enemy_death {
-        spawn(
+        resources.root_entities.push(spawn(
             FadeScreenPrefab {
                 delay: Duration::from_secs_f32(0.5),
                 duration: Duration::from_secs(1),
+                direction: TransitionDirection::Out,
+                color: Color::BLACK,
             },
             &mut commands,
-        );
+        ));
 
         *started = true;
     }
@@ -341,7 +361,7 @@ const BOARD_LAYER: RenderLayers = RenderLayers::layer(1);
 
 impl Prefab for BattlePrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        commands
+        let board_camera = commands
             .spawn_bundle(Camera3dBundle {
                 projection: OrthographicProjection {
                     scale: 3.0,
@@ -363,17 +383,19 @@ impl Prefab for BattlePrefab {
                 ..default()
             })
             .insert(WorldCursor::default())
-            .insert(BOARD_LAYER);
+            .insert(BOARD_LAYER)
+            .id();
 
-        commands
+        let environment_camera = commands
             .spawn_bundle(Camera3dBundle {
                 transform: Transform::from_xyz(0.0, 4.0, 10.0)
                     .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
                 ..default()
             })
-            .insert(ENVIRONMENT_LAYER);
+            .insert(ENVIRONMENT_LAYER)
+            .id();
 
-        spawn(
+        let board = spawn(
             BoardPrefab {
                 layers: BOARD_LAYER,
                 gems: BoardPrefab::random_gems(),
@@ -401,15 +423,21 @@ impl Prefab for BattlePrefab {
             })
             .id();
 
-        commands
+        let root = commands
             .entity(entity)
             .insert_bundle(SceneBundle {
                 scene: self.environment.clone(),
                 ..default()
             })
             .insert(ENVIRONMENT_LAYER)
+            .add_child(environment_camera)
             .add_child(light)
-            .add_child(enemy);
+            .add_child(enemy)
+            .id();
+
+        commands.insert_resource(BattleResources {
+            root_entities: vec![root, board, board_camera],
+        });
     }
 }
 
