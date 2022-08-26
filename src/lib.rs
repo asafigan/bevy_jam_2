@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardState};
 use iyes_loopless::prelude::*;
+use player::Player;
 use prefab::spawn;
 use std::{fmt::Debug, hash::Hash};
 use transitions::TransitionPlugin;
@@ -10,6 +11,7 @@ use utils::UtilsPlugin;
 
 mod battle;
 mod board;
+mod player;
 mod prefab;
 mod transitions;
 mod tween_untils;
@@ -26,6 +28,10 @@ pub fn build_app() -> App {
         brightness: 2.0,
         ..default()
     })
+    .insert_resource(Player {
+        max_health: 100,
+        current_health: 100,
+    })
     .add_plugins(DefaultPlugins)
     .add_plugin(TweeningPlugin)
     .add_plugin(BoardPlugin)
@@ -40,18 +46,28 @@ pub fn build_app() -> App {
     app
 }
 
-fn start_battle(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn start_battle(
+    mut enemy_health: Local<u32>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    if *enemy_health == 0 {
+        *enemy_health = 20;
+    }
+
     spawn(
         BattlePrefab {
             environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
-                max_health: 1,
+                max_health: *enemy_health,
                 transform: default(),
             },
         },
         &mut commands,
     );
+
+    *enemy_health = (*enemy_health as f32 * 1.2) as u32;
 
     commands.insert_resource(NextState(BattleState::Intro));
 }

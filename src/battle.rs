@@ -13,6 +13,7 @@ use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
     board::{BoardPrefab, BoardState, Match, WorldCursor},
+    player::Player,
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
     utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab},
@@ -29,6 +30,7 @@ impl Plugin for BattlePlugin {
             .add_system(build_enemy_animators)
             .add_system(remove_unlit_materials)
             .add_system(update_enemy_health_bar)
+            .add_system(update_player_health_bar)
             .add_system(stop_board.run_not_in_state(BattleState::PlayerTurn))
             .add_system_set(
                 ConditionSet::new()
@@ -345,6 +347,15 @@ fn update_enemy_health_bar(
     }
 }
 
+fn update_player_health_bar(
+    mut progress_bars: Query<&mut ProgressBar, With<Player>>,
+    player: Res<Player>,
+) {
+    for mut health_bar in &mut progress_bars {
+        health_bar.percentage = player.current_health as f32 / player.max_health as f32;
+    }
+}
+
 fn end_enemy_turn(enemies: Query<&Enemy>, mut commands: Commands) {
     if enemies.iter().count() == 0 {
         commands.insert_resource(NextState(BattleState::Outtro));
@@ -382,6 +393,9 @@ fn fade_out(
     }
 }
 
+#[derive(Component)]
+struct PlayerHealthBar;
+
 pub struct BattlePrefab {
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
@@ -417,15 +431,6 @@ impl Prefab for BattlePrefab {
             .insert(BOARD_LAYER)
             .id();
 
-        let environment_camera = commands
-            .spawn_bundle(Camera3dBundle {
-                transform: Transform::from_xyz(0.0, 4.0, 10.0)
-                    .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
-                ..default()
-            })
-            .insert(ENVIRONMENT_LAYER)
-            .id();
-
         let board = spawn(
             BoardPrefab {
                 layers: BOARD_LAYER,
@@ -434,6 +439,27 @@ impl Prefab for BattlePrefab {
             },
             commands,
         );
+
+        let health_bar = spawn(
+            ProgressBarPrefab {
+                starting_percentage: 1.0,
+                transform: Transform::from_xyz(0.0, -3.0, 1.0).with_scale([6.0, 0.4, 1.0].into()),
+            },
+            commands,
+        );
+
+        commands.entity(board).add_child(health_bar);
+
+        commands.entity(health_bar).insert(PlayerHealthBar);
+
+        let environment_camera = commands
+            .spawn_bundle(Camera3dBundle {
+                transform: Transform::from_xyz(0.0, 4.0, 10.0)
+                    .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
+                ..default()
+            })
+            .insert(ENVIRONMENT_LAYER)
+            .id();
 
         let enemy = spawn(self.enemy.clone(), commands);
 
