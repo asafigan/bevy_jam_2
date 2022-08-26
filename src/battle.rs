@@ -53,13 +53,7 @@ impl Plugin for BattlePlugin {
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::Outtro)
-                    .with_system(start_fade_out)
-                    .into(),
-            )
-            .add_system_set(
-                ConditionSet::new()
-                    .run_in_state(BattleState::TransitionOut)
-                    .with_system(end_transition_out)
+                    .with_system(fade_out)
                     .into(),
             );
     }
@@ -72,7 +66,6 @@ pub enum BattleState {
     PlayerTurn,
     EnemyTurn,
     Outtro,
-    TransitionOut,
     End,
 }
 
@@ -312,11 +305,16 @@ fn end_enemy_turn(enemies: Query<&Enemy>, mut commands: Commands) {
     }
 }
 
-fn start_fade_out(delays: Query<&DelayedDespawn>, mut commands: Commands) {
+fn fade_out(
+    mut started: Local<bool>,
+    delays: Query<&DelayedDespawn>,
+    mut events: EventReader<TransitionEnd>,
+    mut commands: Commands,
+) {
     let waiting_for_enemy_death = delays
         .iter()
         .any(|x| x.reason() == Some(DespawnReason::DestroyEnemy));
-    if !waiting_for_enemy_death {
+    if !*started && !waiting_for_enemy_death {
         spawn(
             FadeScreenPrefab {
                 delay: Duration::from_secs_f32(0.5),
@@ -325,13 +323,11 @@ fn start_fade_out(delays: Query<&DelayedDespawn>, mut commands: Commands) {
             &mut commands,
         );
 
-        commands.insert_resource(NextState(BattleState::TransitionOut));
+        *started = true;
     }
-}
-
-fn end_transition_out(mut events: EventReader<TransitionEnd>, mut commands: Commands) {
     if events.iter().count() > 0 {
         commands.insert_resource(NextState(BattleState::End));
+        *started = false;
     }
 }
 
