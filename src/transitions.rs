@@ -67,6 +67,7 @@ fn update_transitions(
 }
 
 pub struct FadeScreenPrefab {
+    pub delay: Duration,
     pub duration: Duration,
 }
 
@@ -89,6 +90,7 @@ impl Prefab for FadeScreenPrefab {
             .id();
 
         let duration = self.duration;
+        let delay = self.delay;
         commands.add(move |world: &mut World| {
             let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
 
@@ -107,7 +109,7 @@ impl Prefab for FadeScreenPrefab {
                 })
                 .insert(AssetAnimator::new(
                     material_handle,
-                    Tween::new(
+                    Delay::new(delay).then(Tween::new(
                         EaseFunction::QuarticOut,
                         TweeningType::Once,
                         duration,
@@ -125,10 +127,10 @@ impl Prefab for FadeScreenPrefab {
                                 alpha: 1.0,
                             },
                         },
-                    ),
+                    )),
                 ))
                 .id();
-            println!("add");
+
             AddChild {
                 parent: entity,
                 child: overlay,
@@ -140,7 +142,7 @@ impl Prefab for FadeScreenPrefab {
             .entity(entity)
             .insert_bundle(SpatialBundle::default())
             .insert(Transition {
-                timer: Timer::new(self.duration, false),
+                timer: Timer::new(self.duration + self.delay, false),
             })
             .insert(TRANSITION_LAYER)
             .add_child(camera);

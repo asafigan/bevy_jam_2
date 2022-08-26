@@ -319,6 +319,7 @@ fn start_fade_out(delays: Query<&DelayedDespawn>, mut commands: Commands) {
     if !waiting_for_enemy_death {
         spawn(
             FadeScreenPrefab {
+                delay: Duration::from_secs_f32(0.5),
                 duration: Duration::from_secs(1),
             },
             &mut commands,
