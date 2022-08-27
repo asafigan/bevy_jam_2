@@ -3,7 +3,10 @@ use std::marker::PhantomData;
 use crate::prefab::*;
 use bevy::prelude::*;
 
-pub struct FullScreen(pub Child);
+pub struct FullScreen {
+    pub color: Color,
+    pub child: Child,
+}
 
 impl Prefab for FullScreen {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
@@ -16,11 +19,11 @@ impl Prefab for FullScreen {
                 position_type: PositionType::Absolute,
                 ..Default::default()
             },
-            color: Color::NONE.into(),
+            color: self.color.into(),
             ..Default::default()
         });
 
-        self.0.construct(entity, commands);
+        self.child.construct(entity, commands);
     }
 }
 

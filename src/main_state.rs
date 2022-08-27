@@ -123,8 +123,14 @@ struct DeathScreen;
 fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraMono-Medium.ttf");
     let death_screen = spawn(
-        FullScreen(
-            ButtonPrefab {
+        FullScreen {
+            color: Color::Rgba {
+                red: 0.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 0.5,
+            },
+            child: ButtonPrefab {
                 on_click: Restart,
                 child: TextPrefab {
                     text: "Restart".into(),
@@ -135,7 +141,7 @@ fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .into(),
             }
             .into(),
-        ),
+        },
         &mut commands,
     );
 
