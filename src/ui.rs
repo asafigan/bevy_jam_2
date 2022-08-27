@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use crate::prefab::*;
 use bevy::prelude::*;
 
-pub struct FullScreen {
+pub struct FullScreen<T> {
     pub color: Color,
-    pub child: Child,
+    pub child: T,
 }
 
-impl Prefab for FullScreen {
+impl<T: Prefab> Prefab for FullScreen<T> {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         commands.entity(entity).insert_bundle(NodeBundle {
             style: Style {
@@ -86,14 +86,15 @@ impl Prefab for VBox {
     }
 }
 
-pub struct ButtonPrefab<T> {
-    pub child: Child,
-    pub on_click: T,
+pub struct ButtonPrefab<T, C> {
+    pub child: T,
+    pub on_click: C,
 }
 
-impl<T> Prefab for ButtonPrefab<T>
+impl<T, C> Prefab for ButtonPrefab<T, C>
 where
-    T: Clone + Send + Sync + 'static,
+    C: Clone + Send + Sync + 'static,
+    T: Prefab,
 {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         commands

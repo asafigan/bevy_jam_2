@@ -137,10 +137,8 @@ fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                     size: 40.0,
                     color: Color::BLACK,
                     font,
-                }
-                .into(),
-            }
-            .into(),
+                },
+            },
         },
         &mut commands,
     );
