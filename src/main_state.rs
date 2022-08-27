@@ -37,14 +37,14 @@ impl Plugin for MainStatePlugin {
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(MainState::Death)
-                    .with_system(go_to_restart.run_on_event::<Restart>())
+                    .with_system(go_to_restart)
                     .into(),
             )
             .add_enter_system(MainState::Restart, fade_screen)
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(MainState::Restart)
-                    .with_system(BattleResources::clean_up_system.run_on_event::<TransitionEnd>())
+                    .with_system(clean_up_battle)
                     .with_system(reset_player.run_on_event::<TransitionEnd>())
                     .with_system(reset_difficulty.run_on_event::<TransitionEnd>())
                     .with_system(clean_up_death_screen.run_on_event::<TransitionEnd>())
@@ -154,8 +154,20 @@ fn clean_up_death_screen(screens: Query<Entity, With<DeathScreen>>, mut commands
     }
 }
 
-fn go_to_restart(mut commands: Commands) {
-    commands.insert_resource(NextState(MainState::Restart));
+fn go_to_restart(mut commands: Commands, mut events: EventReader<Restart>) {
+    if events.iter().count() > 0 {
+        commands.insert_resource(NextState(MainState::Restart));
+    }
+}
+
+fn clean_up_battle(
+    mut commands: Commands,
+    mut battle_resources: ResMut<BattleResources>,
+    mut events: EventReader<TransitionEnd>,
+) {
+    if events.iter().count() > 0 {
+        BattleResources::clean_up_system(battle_resources, commands);
+    }
 }
 
 fn fade_screen(mut commands: Commands) {
