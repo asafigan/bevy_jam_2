@@ -84,6 +84,7 @@ impl Default for Difficulty {
 fn start_battle(
     mut difficulty: ResMut<Difficulty>,
     mut commands: Commands,
+    player: Res<Player>,
     asset_server: Res<AssetServer>,
 ) {
     spawn(
@@ -95,6 +96,7 @@ fn start_battle(
                 attack: difficulty.enemy_attack,
                 transform: default(),
             },
+            spells: player.spells.clone(),
         },
         &mut commands,
     );

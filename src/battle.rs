@@ -13,7 +13,8 @@ use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
     board::{BoardPrefab, BoardState, Match, WorldCursor},
-    player::Player,
+    cards::CardsPrefab,
+    player::{Player, Spell},
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
     utils::{DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab},
@@ -325,12 +326,12 @@ fn end_player_turn(mut commands: Commands, enemies: Query<(&EnemyAnimator, &Enem
 }
 
 fn kill_enemies(
-    mut enemies: Query<(Entity, &Enemy, &EnemyAnimations, &mut EnemyAnimator)>,
+    enemies: Query<(Entity, &Enemy, &EnemyAnimations, &EnemyAnimator)>,
     mut animation_players: Query<&mut AnimationPlayer>,
     animations: Res<Assets<AnimationClip>>,
     mut commands: Commands,
 ) {
-    for (entity, enemy, enemy_animations, mut animator) in &mut enemies {
+    for (entity, enemy, enemy_animations, animator) in &enemies {
         if enemy.current_health == 0 {
             let mut animation_player = animation_players
                 .get_mut(animator.animation_player)
@@ -338,7 +339,6 @@ fn kill_enemies(
 
             let kill_time = if let Some(animation) = &enemy_animations.death {
                 animation_player.play(animation.clone());
-
                 animations.get(animation).unwrap().duration()
             } else {
                 animation_player.pause();
@@ -456,10 +456,12 @@ struct BattleCamera;
 pub struct BattlePrefab {
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
+    pub spells: Vec<Spell>,
 }
 
 const ENVIRONMENT_LAYER: RenderLayers = RenderLayers::layer(0);
 const BOARD_LAYER: RenderLayers = RenderLayers::layer(1);
+const CARDS_LAYER: RenderLayers = RenderLayers::layer(2);
 
 impl Prefab for BattlePrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
@@ -511,6 +513,33 @@ impl Prefab for BattlePrefab {
 
         commands.entity(health_bar).insert(PlayerHealthBar);
 
+        let cards_camera = commands
+            .spawn_bundle(Camera2dBundle {
+                camera_2d: Camera2d {
+                    clear_color: ClearColorConfig::None,
+                    ..default()
+                },
+                camera: Camera {
+                    // renders after / on top of the main camera
+                    priority: 2,
+                    is_active: false,
+                    ..default()
+                },
+                ..default()
+            })
+            .insert(BattleCamera)
+            .insert(CARDS_LAYER)
+            .id();
+
+        let cards = spawn(
+            CardsPrefab {
+                layer: CARDS_LAYER,
+                transform: default(),
+                spells: self.spells.clone(),
+            },
+            commands,
+        );
+
         let environment_camera = commands
             .spawn_bundle(Camera3dBundle {
                 camera: Camera {
@@ -558,7 +587,7 @@ impl Prefab for BattlePrefab {
             .id();
 
         commands.insert_resource(BattleResources {
-            root_entities: vec![root, board, board_camera],
+            root_entities: vec![root, board, board_camera, cards_camera, cards],
         });
     }
 }

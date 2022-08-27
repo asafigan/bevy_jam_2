@@ -1,15 +1,19 @@
 use battle::{BattlePlugin, BattleState};
-use bevy::prelude::*;
+use bevy::{prelude::*, render::view::RenderLayers, text::Text2dBounds};
 use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardState};
+use cards::{CardPlugin, CardPrefab, CardsPrefab};
 use iyes_loopless::prelude::*;
 use main_state::{MainState, MainStatePlugin};
+use player::Player;
+use prefab::spawn;
 use std::{fmt::Debug, hash::Hash};
 use transitions::TransitionPlugin;
 use utils::UtilsPlugin;
 
 mod battle;
 mod board;
+mod cards;
 mod main_state;
 mod player;
 mod prefab;
@@ -36,6 +40,7 @@ pub fn build_app() -> App {
     .add_plugin(BattlePlugin)
     .add_plugin(TransitionPlugin)
     .add_plugin(MainStatePlugin)
+    .add_plugin(CardPlugin)
     .add_system(log_states::<BoardState>)
     .add_system(log_states::<BattleState>)
     .add_system(log_states::<MainState>);

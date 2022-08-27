@@ -22,10 +22,6 @@ where
 }
 
 impl Child {
-    pub fn new<T: Prefab>(prefab: T) -> Self {
-        prefab.into()
-    }
-
     pub fn construct(&self, entity: Entity, commands: &mut Commands) -> Entity {
         let child = commands.spawn().id();
 

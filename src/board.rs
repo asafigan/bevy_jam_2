@@ -2,17 +2,17 @@ use std::time::Duration;
 
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
-use crate::utils::{DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar, ProgressBarPrefab};
+use crate::utils::{
+    square_mesh, white_standard_material, DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar,
+    ProgressBarPrefab,
+};
 use bevy::ecs::system::AsSystemLabel;
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
 use bevy::{
     asset::HandleId,
     input::{mouse::MouseButtonInput, ButtonState},
-    prelude::{
-        shape::{Icosphere, RegularPolygon},
-        *,
-    },
+    prelude::{shape::Icosphere, *},
     reflect::TypeUuid,
     render::camera::RenderTarget,
     utils::HashSet,
@@ -96,13 +96,6 @@ fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
         }
         .into(),
     );
-
-    let square = RegularPolygon {
-        radius: f32::sqrt(0.5),
-        sides: 4,
-    };
-
-    meshes.set_untracked(TilePrefab::mesh_handle(), square.into());
 }
 
 fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -116,8 +109,6 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     ] {
         materials.set_untracked(element.material_handle(), element.material())
     }
-
-    materials.set_untracked(TilePrefab::material_handle(), default());
 }
 
 #[derive(Component, Default)]
@@ -715,9 +706,6 @@ impl Element {
 
 const GEM_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000);
 
-const TILE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 1);
-const TILE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 1);
-
 #[derive(Component)]
 pub struct Gem {
     pub mesh: Entity,
@@ -877,23 +865,12 @@ struct TilePrefab {
     transform: Transform,
 }
 
-impl TilePrefab {
-    fn mesh_handle() -> Handle<Mesh> {
-        Handle::weak(TILE_MESH_ID)
-    }
-
-    fn material_handle() -> Handle<StandardMaterial> {
-        Handle::weak(TILE_MATERIAL_ID)
-    }
-}
-
 impl Prefab for TilePrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let mesh = commands
             .spawn_bundle(PbrBundle {
-                mesh: Self::mesh_handle(),
-                material: Self::material_handle(),
-                transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
+                mesh: square_mesh(),
+                material: white_standard_material(),
                 ..default()
             })
             // bevy bug: lights don't respect layers and lights cast shadows on all layers

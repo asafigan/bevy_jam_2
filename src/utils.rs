@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::{
     asset::HandleId,
     pbr::{NotShadowCaster, NotShadowReceiver},
-    prelude::{shape::RegularPolygon, *},
+    prelude::{shape::Quad, *},
     reflect::TypeUuid,
     render::view::RenderLayers,
     transform::TransformSystem,
@@ -18,6 +18,7 @@ impl Plugin for UtilsPlugin {
         app.add_event::<DespawnEvent>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
+            .add_startup_system(load_fonts)
             .add_system(delayed_despawn)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
@@ -28,22 +29,39 @@ impl Plugin for UtilsPlugin {
 }
 
 fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
-    let square = RegularPolygon {
-        radius: f32::sqrt(0.5),
-        sides: 4,
+    let square = Quad {
+        size: Vec2::splat(1.0),
+        ..default()
     };
 
-    meshes.set_untracked(ProgressBarPrefab::mesh_handle(), square.into());
+    meshes.set_untracked(square_mesh(), square.into());
 }
 
-fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
-    materials.set_untracked(
-        ProgressBarPrefab::material_handle(),
+fn add_materials(
+    mut standard_materials: ResMut<Assets<StandardMaterial>>,
+    mut color_materials: ResMut<Assets<ColorMaterial>>,
+) {
+    standard_materials.set_untracked(
+        white_standard_material(),
         StandardMaterial {
             unlit: true,
             ..default()
         },
     );
+
+    color_materials.set_untracked(
+        white_color_material(),
+        ColorMaterial {
+            color: Color::WHITE,
+            ..default()
+        },
+    );
+}
+
+fn load_fonts(mut font: Local<Option<Handle<Font>>>, asset_server: Res<AssetServer>) {
+    if font.is_none() {
+        *font = Some(asset_server.load(DEFAULT_FONT_PATH));
+    }
 }
 
 #[derive(Component, Default)]
@@ -152,9 +170,8 @@ impl Prefab for ProgressBarPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let mesh = commands
             .spawn_bundle(PbrBundle {
-                mesh: Self::mesh_handle(),
-                material: Self::material_handle(),
-                transform: Transform::from_rotation(Quat::from_rotation_z(45_f32.to_radians())),
+                mesh: square_mesh(),
+                material: white_standard_material(),
                 ..default()
             })
             .insert(NotShadowCaster)
@@ -180,19 +197,6 @@ impl Prefab for ProgressBarPrefab {
     }
 }
 
-const SQUARE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
-const SQUARE_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
-
-impl ProgressBarPrefab {
-    fn mesh_handle() -> Handle<Mesh> {
-        Handle::weak(SQUARE_MESH_ID)
-    }
-
-    fn material_handle() -> Handle<StandardMaterial> {
-        Handle::weak(SQUARE_MATERIAL_ID)
-    }
-}
-
 fn update_progress(
     progress_bars: Query<&ProgressBar, Changed<ProgressBar>>,
     mut transforms: Query<&mut Transform>,
@@ -202,4 +206,24 @@ fn update_progress(
 
         transform.scale.x = progress_bar.percentage;
     }
+}
+
+const SQUARE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
+const WHITE_STANDARD_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
+const WHITE_COLOR_MATERIAL_ID: HandleId = HandleId::new(ColorMaterial::TYPE_UUID, 10_000 - 2);
+const DEFAULT_FONT_PATH: &str = "fonts/FiraMono-Medium.ttf";
+pub fn default_font() -> Handle<Font> {
+    Handle::weak(DEFAULT_FONT_PATH.into())
+}
+
+pub fn square_mesh() -> Handle<Mesh> {
+    Handle::weak(SQUARE_MESH_ID)
+}
+
+pub fn white_color_material() -> Handle<ColorMaterial> {
+    Handle::weak(WHITE_COLOR_MATERIAL_ID)
+}
+
+pub fn white_standard_material() -> Handle<StandardMaterial> {
+    Handle::weak(WHITE_STANDARD_MATERIAL_ID)
 }
