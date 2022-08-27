@@ -11,18 +11,7 @@ pub struct CardPlugin;
 
 impl Plugin for CardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_loopless_state(CardsState::None)
-            .add_system(debug_text);
-    }
-}
-
-fn debug_text(text2d: Query<(&Text, &ComputedVisibility)>, fonts: Res<Assets<Font>>) {
-    for text in &text2d {
-        dbg!(text);
-    }
-
-    for x in fonts.iter() {
-        dbg!(x);
+        app.add_loopless_state(CardsState::None);
     }
 }
 
