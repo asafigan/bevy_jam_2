@@ -248,7 +248,12 @@ fn remove_unlit_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 }
 
-fn intro(mut started: Local<bool>, mut events: EventReader<TransitionEnd>, mut commands: Commands) {
+fn intro(
+    mut started: Local<bool>,
+    mut events: EventReader<TransitionEnd>,
+    mut cameras: Query<&mut Camera, With<BattleCamera>>,
+    mut commands: Commands,
+) {
     if *started {
         for event in events.iter() {
             commands.entity(event.transition).despawn_recursive();
@@ -267,6 +272,10 @@ fn intro(mut started: Local<bool>, mut events: EventReader<TransitionEnd>, mut c
             },
             &mut commands,
         );
+
+        for mut camera in &mut cameras {
+            camera.is_active = true;
+        }
 
         *started = true;
     }
@@ -441,6 +450,9 @@ fn fade_out(
 #[derive(Component)]
 struct PlayerHealthBar;
 
+#[derive(Component)]
+struct BattleCamera;
+
 pub struct BattlePrefab {
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
@@ -468,12 +480,14 @@ impl Prefab for BattlePrefab {
                 camera: Camera {
                     // renders after / on top of the main camera
                     priority: 1,
+                    is_active: false,
                     ..default()
                 },
                 ..default()
             })
             .insert(WorldCursor::default())
             .insert(BOARD_LAYER)
+            .insert(BattleCamera)
             .id();
 
         let board = spawn(
@@ -499,10 +513,15 @@ impl Prefab for BattlePrefab {
 
         let environment_camera = commands
             .spawn_bundle(Camera3dBundle {
+                camera: Camera {
+                    is_active: false,
+                    ..default()
+                },
                 transform: Transform::from_xyz(0.0, 4.0, 10.0)
                     .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
                 ..default()
             })
+            .insert(BattleCamera)
             .insert(ENVIRONMENT_LAYER)
             .id();
 
@@ -523,6 +542,7 @@ impl Prefab for BattlePrefab {
                 ),
                 ..default()
             })
+            .insert(BattleCamera)
             .id();
 
         let root = commands
