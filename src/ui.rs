@@ -10,20 +10,25 @@ pub struct FullScreen<T> {
 
 impl<T: Prefab> Prefab for FullScreen<T> {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        commands.entity(entity).insert_bundle(NodeBundle {
-            style: Style {
-                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                align_content: AlignContent::Center,
-                position_type: PositionType::Absolute,
-                ..Default::default()
-            },
-            color: self.color.into(),
-            ..Default::default()
-        });
+        let child = commands.spawn().id();
 
-        self.child.construct(entity, commands);
+        commands
+            .entity(entity)
+            .insert_bundle(NodeBundle {
+                style: Style {
+                    size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    align_content: AlignContent::Center,
+                    position_type: PositionType::Absolute,
+                    ..Default::default()
+                },
+                color: self.color.into(),
+                ..Default::default()
+            })
+            .add_child(child);
+
+        self.child.construct(child, commands);
     }
 }
 
@@ -97,15 +102,18 @@ where
     T: Prefab,
 {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
+        let child = commands.spawn().id();
+
         commands
             .entity(entity)
             .insert_bundle(ButtonBundle {
                 color: Color::WHITE.into(),
                 ..Default::default()
             })
-            .insert(OnClick(self.on_click.clone()));
+            .insert(OnClick(self.on_click.clone()))
+            .add_child(child);
 
-        self.child.construct(entity, commands);
+        self.child.construct(child, commands);
     }
 }
 
