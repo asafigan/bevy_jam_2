@@ -1,5 +1,3 @@
-use bevy::prelude::*;
-
 use crate::board::Element;
 
 pub struct Player {

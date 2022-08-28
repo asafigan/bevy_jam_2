@@ -12,12 +12,12 @@ use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
-    board::{BoardPrefab, BoardState, Match, WorldCursor},
+    board::{BoardPrefab, BoardState, Match},
     cards::{CardsPrefab, CardsState},
     player::{Player, Spell},
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
-    utils::{go_to, DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab},
+    utils::{go_to, DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab, WorldCursor},
 };
 
 pub struct BattlePlugin;
@@ -558,6 +558,7 @@ impl Prefab for BattlePrefab {
             })
             .insert(BattleCamera)
             .insert(ENVIRONMENT_LAYER)
+            .insert(WorldCursor::default())
             .id();
 
         let enemy = spawn(self.enemy.clone(), commands);

@@ -1,7 +1,4 @@
-use bevy::{
-    prelude::*,
-    render::view::{visibility, RenderLayers},
-};
+use bevy::{prelude::*, render::view::RenderLayers};
 use iyes_loopless::prelude::*;
 
 use crate::{
@@ -65,8 +62,10 @@ fn put_cards_in_hand(
     for (hand, hand_transform) in &hands {
         let mut iter = cards.iter_many_mut(&hand.cards);
         let mut i = 0.0;
+        let space = 500.0;
+        let offset = (hand.cards.len() / 2) as f32 * space;
         while let Some(mut transform) = iter.fetch_next() {
-            *transform = *hand_transform * Transform::from_xyz(i * 100.0, 0.0, i);
+            *transform = *hand_transform * Transform::from_xyz(i * space - offset, 0.0, i);
             i += 1.0;
         }
     }

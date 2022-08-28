@@ -4,9 +4,8 @@ use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{
     square_mesh, white_standard_material, DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar,
-    ProgressBarPrefab,
+    ProgressBarPrefab, WorldCursor, WorldHover,
 };
-use bevy::ecs::system::AsSystemLabel;
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
 use bevy::{
@@ -14,7 +13,6 @@ use bevy::{
     input::{mouse::MouseButtonInput, ButtonState},
     prelude::{shape::Icosphere, *},
     reflect::TypeUuid,
-    render::camera::RenderTarget,
     utils::HashSet,
 };
 use bevy_tweening::{
@@ -29,20 +27,12 @@ pub struct BoardPlugin;
 
 impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<TileEvent>()
-            .add_event::<Match>()
+        app.add_event::<Match>()
             .add_event::<Fall>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_system(change_gem_material)
             .add_loopless_state(BoardState::None)
-            .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
-            .add_system_to_stage(
-                CoreStage::PreUpdate,
-                track_tile_hover
-                    .run_not_in_state(BoardState::None)
-                    .after(update_world_cursors.as_system_label()),
-            )
             .add_enter_system(BoardState::Ready, reset_timer)
             .add_system_set(
                 ConditionSet::new()
@@ -111,94 +101,17 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 }
 
-#[derive(Component, Default)]
-pub struct WorldCursor {
-    pub position: Option<Vec2>,
-}
-
-fn update_world_cursors(
-    windows: Res<Windows>,
-    mut cameras: Query<(&Camera, &GlobalTransform, &mut WorldCursor)>,
-) {
-    for (camera, camera_transform, mut cursor) in &mut cameras {
-        cursor.position = if let RenderTarget::Window(id) = camera.target {
-            windows.get(id).and_then(|window| {
-                let window_size = Vec2::new(window.width(), window.height());
-                let cursor_position = window.cursor_position()?;
-
-                // convert screen position [0..resolution] to ndc [-1..1] (gpu coordinates)
-                let ndc = (cursor_position / window_size) * 2.0 - Vec2::ONE;
-
-                // matrix for undoing the projection and camera transform
-                let ndc_to_world =
-                    camera_transform.compute_matrix() * camera.projection_matrix().inverse();
-
-                // use it to convert ndc to world-space coordinates
-                let world_pos = ndc_to_world.project_point3(ndc.extend(-1.0));
-
-                // reduce it to a 2D value
-                Some(world_pos.truncate())
-            })
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct TileEvent {
-    tile: Entity,
-    info: TileEventInfo,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TileEventInfo {
-    Entered,
-    Exited,
-}
-
-fn track_tile_hover(
-    mut tiles: Query<(Entity, &mut Tile, &GlobalTransform)>,
-    mut events: EventWriter<TileEvent>,
-    cursors: Query<&WorldCursor>,
-) {
-    let cursor = cursors.single();
-
-    for (entity, mut tile, transform) in &mut tiles {
-        let mouse_in = if let Some(position) = cursor.position {
-            let matrix = transform.compute_matrix().inverse();
-            let position = matrix.transform_point3(position.extend(0.0)).truncate();
-
-            position.max_element() < 0.5 && position.min_element() > -0.5
-        } else {
-            false
-        };
-
-        if tile.mouse_in != mouse_in {
-            tile.mouse_in = mouse_in;
-            events.send(TileEvent {
-                tile: entity,
-                info: if mouse_in {
-                    TileEventInfo::Entered
-                } else {
-                    TileEventInfo::Exited
-                },
-            });
-        }
-    }
-}
-
 fn change_gem_material(
     mut materials: ResMut<Assets<StandardMaterial>>,
-    tiles: Query<&Tile>,
+    tiles: Query<(&Tile, &WorldHover)>,
     gems: Query<&Gem>,
     mut meshes: Query<&mut Handle<StandardMaterial>>,
     state: Res<CurrentState<BoardState>>,
 ) {
-    for tile in &tiles {
+    for (tile, hover) in &tiles {
         if let Ok(gem) = gems.get(tile.gem) {
             if let Ok(mut material) = meshes.get_mut(gem.mesh) {
-                *material = if (state.0 == BoardState::Ready && tile.mouse_in) || gem.holding {
+                *material = if (state.0 == BoardState::Ready && hover.is_cursor_in) || gem.holding {
                     materials.add(StandardMaterial {
                         base_color: gem.element.color(),
                         emissive: gem.element.color() * 0.5,
@@ -216,6 +129,7 @@ struct Swapping {
     swaps: u32,
     gem: Entity,
     current_tile: Entity,
+    world_cursor: Entity,
     timer: Timer,
 }
 
@@ -227,7 +141,7 @@ fn reset_timer(mut timers: Query<&mut ProgressBar, With<TimerProgress>>) {
 
 fn pickup_gem(
     mut events: EventReader<MouseButtonInput>,
-    tiles: Query<(Entity, &Tile)>,
+    tiles: Query<(Entity, &Tile, &WorldHover)>,
     mut gems: Query<&mut Gem>,
     mut commands: Commands,
 ) {
@@ -237,13 +151,14 @@ fn pickup_gem(
         .fold(false, |_, current| current.state == ButtonState::Pressed);
 
     if start_pickup {
-        for (entity, tile) in &tiles {
-            if tile.mouse_in {
+        for (entity, tile, hover) in &tiles {
+            if hover.is_cursor_in {
                 commands.insert_resource(Swapping {
                     swaps: 0,
                     gem: tile.gem,
                     current_tile: entity,
                     timer: Timer::from_seconds(9.0, false),
+                    world_cursor: hover.cursors_in_bounds[0],
                 });
                 commands.insert_resource(NextState(BoardState::Swapping));
 
@@ -279,7 +194,7 @@ fn swap_gems(
     // todo: bug: skip tile
     // todo: bug: diangles
 
-    let cursor = cursors.single();
+    let cursor = cursors.get(swapping.world_cursor).unwrap();
 
     if let Some(position) = cursor.position {
         let position = boards
@@ -353,7 +268,7 @@ fn move_gem(
     boards: Query<&GlobalTransform>,
     cursors: Query<&WorldCursor>,
 ) {
-    if let Some(position) = cursors.single().position {
+    if let Some(position) = cursors.get(swapping.world_cursor).unwrap().position {
         let (mut gem_transform, parent) = gems.get_mut(swapping.gem).unwrap();
         let transform = boards.get(parent.get()).unwrap();
         let position = transform
@@ -855,7 +770,6 @@ impl Prefab for BoardPrefab {
 
 #[derive(Component)]
 pub struct Tile {
-    pub mouse_in: bool,
     pub gem: Entity,
     pub mesh: Entity,
 }
@@ -885,10 +799,10 @@ impl Prefab for TilePrefab {
                 ..default()
             })
             .insert(Tile {
-                mouse_in: false,
                 gem: self.gem,
                 mesh,
             })
+            .insert(WorldHover::default())
             .add_child(mesh);
     }
 }

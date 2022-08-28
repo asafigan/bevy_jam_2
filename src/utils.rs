@@ -2,13 +2,17 @@ use std::{hash::Hash, time::Duration};
 
 use bevy::{
     asset::HandleId,
+    ecs::system::AsSystemLabel,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::{shape::Quad, *},
     reflect::TypeUuid,
-    render::view::RenderLayers,
+    render::{
+        camera::RenderTarget,
+        view::{RenderLayers, VisibleEntities},
+    },
     transform::TransformSystem,
 };
-use iyes_loopless::state::NextState;
+use iyes_loopless::{prelude::*, state::NextState};
 
 use crate::prefab::*;
 
@@ -17,6 +21,7 @@ pub struct UtilsPlugin;
 impl Plugin for UtilsPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<DespawnEvent>()
+            .add_event::<WorldCursorEvent>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_startup_system(load_fonts)
@@ -25,7 +30,12 @@ impl Plugin for UtilsPlugin {
                 CoreStage::PostUpdate,
                 update_progress.before(TransformSystem::TransformPropagate),
             )
-            .add_system_to_stage(CoreStage::PostUpdate, propagate_render_layers);
+            .add_system_to_stage(CoreStage::PostUpdate, propagate_render_layers)
+            .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
+            .add_system_to_stage(
+                CoreStage::PreUpdate,
+                track_world_hover.after(update_world_cursors.as_system_label()),
+            );
     }
 }
 
@@ -233,5 +243,92 @@ pub fn white_standard_material() -> Handle<StandardMaterial> {
 pub fn go_to<T: Clone + Eq + Hash + Send + Sync + 'static>(state: T) -> impl Fn(Commands) {
     move |mut commands| {
         commands.insert_resource(NextState(state.clone()));
+    }
+}
+
+#[derive(Component, Default)]
+pub struct WorldCursor {
+    pub position: Option<Vec2>,
+}
+
+fn update_world_cursors(
+    windows: Res<Windows>,
+    mut cameras: Query<(&Camera, &GlobalTransform, &mut WorldCursor)>,
+) {
+    for (camera, camera_transform, mut cursor) in &mut cameras {
+        cursor.position = if let RenderTarget::Window(id) = camera.target {
+            windows.get(id).and_then(|window| {
+                let window_size = Vec2::new(window.width(), window.height());
+                let cursor_position = window.cursor_position()?;
+
+                // convert screen position [0..resolution] to ndc [-1..1] (gpu coordinates)
+                let ndc = (cursor_position / window_size) * 2.0 - Vec2::ONE;
+
+                // matrix for undoing the projection and camera transform
+                let ndc_to_world =
+                    camera_transform.compute_matrix() * camera.projection_matrix().inverse();
+
+                // use it to convert ndc to world-space coordinates
+                let world_pos = ndc_to_world.project_point3(ndc.extend(-1.0));
+
+                // reduce it to a 2D value
+                Some(world_pos.truncate())
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldCursorEvent {
+    pub entity: Entity,
+    pub info: WorldCursorEventInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorldCursorEventInfo {
+    Entered,
+    Exited,
+}
+
+#[derive(Component, Default)]
+pub struct WorldHover {
+    pub is_cursor_in: bool,
+    pub cursors_in_bounds: Vec<Entity>,
+}
+
+fn track_world_hover(
+    mut hoverable: Query<(Entity, &mut WorldHover, &GlobalTransform)>,
+    mut events: EventWriter<WorldCursorEvent>,
+    cursors: Query<(Entity, &WorldCursor, &VisibleEntities)>,
+) {
+    for (entity, mut hoverable, transform) in &mut hoverable {
+        hoverable.cursors_in_bounds = cursors
+            .iter()
+            .filter(|(_, _, entities)| entities.entities.contains(&entity))
+            .filter_map(|(entity, cursor, _)| cursor.position.map(|x| (entity, x)))
+            .filter(|(entity, position)| {
+                let matrix = transform.compute_matrix().inverse();
+                let position = matrix.transform_point3(position.extend(0.0)).truncate();
+
+                position.max_element() < 0.5 && position.min_element() > -0.5
+            })
+            .map(|(x, _)| x)
+            .collect();
+
+        let is_cursor_in = !hoverable.cursors_in_bounds.is_empty();
+
+        if hoverable.is_cursor_in != is_cursor_in {
+            hoverable.is_cursor_in = is_cursor_in;
+            events.send(WorldCursorEvent {
+                entity,
+                info: if is_cursor_in {
+                    WorldCursorEventInfo::Entered
+                } else {
+                    WorldCursorEventInfo::Exited
+                },
+            });
+        }
     }
 }
