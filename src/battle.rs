@@ -12,7 +12,7 @@ use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
-    board::{BoardPrefab, BoardState, Match},
+    board::{BoardPrefab, BoardState, Element, Match},
     cards::{CardsPrefab, CardsState},
     player::{Player, Spell},
     prefab::{spawn, Prefab},
@@ -302,8 +302,16 @@ fn player_attack(
     mut enemies: Query<(&mut Enemy, &mut EnemyAnimator, &EnemyAnimations)>,
     mut animation_players: Query<&mut AnimationPlayer>,
     matches: Res<Matches>,
+    mut player: ResMut<Player>,
 ) {
-    let damage = matches.0.iter().map(|x| x.tiles.len() as u32).sum();
+    let spell = player.active_spell.as_ref().unwrap();
+    let matches: Vec<_> = matches.0.iter().collect();
+    let damage = matches
+        .iter()
+        .filter(|x| spell.elements.contains(&x.element))
+        .map(|x| x.tiles.len() as u32)
+        .sum::<u32>()
+        * spell.attack;
 
     if damage != 0 {
         for (mut enemy, mut animator, animations) in &mut enemies {
@@ -317,6 +325,14 @@ fn player_attack(
             animator.current_animation = Some(animations.hurt.clone());
         }
     }
+
+    let heal: u32 = matches
+        .iter()
+        .filter(|x| x.element == Element::Life)
+        .map(|x| x.tiles.len() as u32)
+        .sum();
+
+    player.current_health = player.max_health.min(player.current_health + heal * 5);
 }
 
 fn end_player_turn(mut commands: Commands, enemies: Query<(&EnemyAnimator, &EnemyAnimations)>) {
