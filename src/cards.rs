@@ -4,7 +4,7 @@ use iyes_loopless::prelude::*;
 use crate::{
     player::Spell,
     prefab::{spawn, Prefab},
-    utils::{default_font, go_to, square_mesh, white_color_material},
+    utils::{default_font, go_to, square_mesh, white_color_material, WorldHover},
 };
 
 pub struct CardPlugin;
@@ -13,8 +13,7 @@ impl Plugin for CardPlugin {
     fn build(&self, app: &mut App) {
         app.add_loopless_state(CardsState::None)
             .add_system(put_cards_in_pile)
-            .add_system(put_cards_in_hand)
-            .add_enter_system(CardsState::Draw, draw)
+            .add_enter_system(CardsState::Draw, draw.chain(put_cards_in_hand))
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(CardsState::Draw)
@@ -25,7 +24,7 @@ impl Plugin for CardPlugin {
                 ConditionSet::new()
                     .run_in_state(CardsState::Select)
                     .with_system(select_cards)
-                    .with_system(go_to(CardsState::Merge))
+                    //.with_system(go_to(CardsState::Merge))
                     .into(),
             )
             .add_enter_system(CardsState::Merge, merge)
@@ -93,13 +92,38 @@ fn draw(
     let mut discard_pile = discard_piles.single_mut();
 
     if draw_pile.cards.len() < 5 {
+        fastrand::shuffle(&mut discard_pile.cards);
         draw_pile.cards.extend(discard_pile.cards.drain(..));
     }
 
     hand.cards.extend(draw_pile.cards.drain(..5));
 }
 
-fn select_cards() {}
+fn select_cards(mut hands: Query<&mut Hand>, mut cards: Query<(&WorldHover, &mut Transform)>) {
+    let hover_offset = Vec3::new(0.0, 100.0, 10.0);
+    for mut hand in &mut hands {
+        if let Some(card) = hand.hovered_card {
+            let (hover, mut transform) = cards.get_mut(card).unwrap();
+
+            if !hover.is_cursor_in {
+                hand.hovered_card = None;
+                transform.translation -= hover_offset;
+            }
+        }
+
+        if hand.hovered_card.is_none() {
+            let hand = hand.as_mut();
+            for entity in &hand.cards {
+                let (hover, mut transform) = cards.get_mut(*entity).unwrap();
+                if hover.is_cursor_in {
+                    hand.hovered_card = Some(*entity);
+                    transform.translation += hover_offset;
+                    break;
+                }
+            }
+        }
+    }
+}
 
 fn merge() {}
 
@@ -113,6 +137,7 @@ fn discard(mut discard_piles: Query<&mut Pile, With<DiscardPile>>, mut hands: Qu
 #[derive(Component, Default)]
 struct Hand {
     cards: Vec<Entity>,
+    hovered_card: Option<Entity>,
 }
 
 #[derive(Component, Default)]
@@ -134,12 +159,14 @@ pub struct CardsPrefab {
 
 impl Prefab for CardsPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let cards: Vec<Entity> = self
+        let mut cards: Vec<Entity> = self
             .spells
             .iter()
             .cloned()
             .map(|spell| spawn(CardPrefab { spell }, commands))
             .collect();
+
+        fastrand::shuffle(&mut cards);
 
         commands
             .entity(entity)
@@ -191,21 +218,25 @@ impl Prefab for CardPrefab {
             horizontal: HorizontalAlign::Center,
         };
 
+        let width = 175.0 * SCALE;
+        let height = 250.0 * SCALE;
+
         commands
             .entity(entity)
             .insert_bundle(SpatialBundle::default())
+            .insert(WorldHover::new([width, height].into()).extend_bottom_bounds(1000.0))
             .with_children(|commands| {
                 commands.spawn_bundle(ColorMesh2dBundle {
                     mesh: square_mesh().into(),
                     material: white_color_material(),
-                    transform: Transform::from_scale([175.0 * SCALE, 250.0 * SCALE, 1.0].into()),
+                    transform: Transform::from_scale([width, height, 1.0].into()),
                     ..default()
                 });
 
                 commands.spawn_bundle(ColorMesh2dBundle {
                     mesh: square_mesh().into(),
                     material: white_color_material(),
-                    transform: Transform::from_scale([175.0 * SCALE, 250.0 * SCALE, 1.0].into())
+                    transform: Transform::from_scale([width, height, 1.0].into())
                         .with_rotation(Quat::from_rotation_y(180_f32.to_radians())),
                     ..default()
                 });

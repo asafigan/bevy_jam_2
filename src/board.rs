@@ -802,7 +802,7 @@ impl Prefab for TilePrefab {
                 gem: self.gem,
                 mesh,
             })
-            .insert(WorldHover::default())
+            .insert(WorldHover::new([1.0, 1.0].into()))
             .add_child(mesh);
     }
 }

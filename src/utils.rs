@@ -292,10 +292,38 @@ pub enum WorldCursorEventInfo {
     Exited,
 }
 
-#[derive(Component, Default)]
+#[derive(Component)]
 pub struct WorldHover {
+    pub bounds: Vec2,
+    pub offset: Vec2,
     pub is_cursor_in: bool,
     pub cursors_in_bounds: Vec<Entity>,
+    pub check_visibility_of: Option<Entity>,
+}
+
+impl WorldHover {
+    pub fn new(bounds: Vec2) -> Self {
+        Self {
+            bounds,
+            offset: -bounds / 2.0,
+            is_cursor_in: false,
+            cursors_in_bounds: default(),
+            check_visibility_of: None,
+        }
+    }
+
+    pub fn extend_bottom_bounds(mut self, by: f32) -> Self {
+        self.bounds.y += by;
+        self.offset.y -= by;
+        self
+    }
+
+    pub fn with_check_visibility_of(self, entity: Entity) -> Self {
+        Self {
+            check_visibility_of: Some(entity),
+            ..self
+        }
+    }
 }
 
 fn track_world_hover(
@@ -304,15 +332,20 @@ fn track_world_hover(
     cursors: Query<(Entity, &WorldCursor, &VisibleEntities)>,
 ) {
     for (entity, mut hoverable, transform) in &mut hoverable {
+        let check_visibility_of = hoverable.check_visibility_of.unwrap_or(entity);
+
         hoverable.cursors_in_bounds = cursors
             .iter()
-            .filter(|(_, _, entities)| entities.entities.contains(&entity))
+            .filter(|(_, _, entities)| entities.entities.contains(&check_visibility_of))
             .filter_map(|(entity, cursor, _)| cursor.position.map(|x| (entity, x)))
             .filter(|(entity, position)| {
                 let matrix = transform.compute_matrix().inverse();
                 let position = matrix.transform_point3(position.extend(0.0)).truncate();
 
-                position.max_element() < 0.5 && position.min_element() > -0.5
+                let [max_x, max_y] = (hoverable.bounds + hoverable.offset).to_array();
+                let [min_x, min_y] = hoverable.offset.to_array();
+
+                position.x < max_x && position.x > min_x && position.y < max_y && position.y > min_y
             })
             .map(|(x, _)| x)
             .collect();

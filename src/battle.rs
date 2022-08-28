@@ -534,6 +534,7 @@ impl Prefab for BattlePrefab {
                 ..default()
             })
             .insert(BattleCamera)
+            .insert(WorldCursor::default())
             .insert(CARDS_LAYER)
             .id();
 
@@ -558,7 +559,6 @@ impl Prefab for BattlePrefab {
             })
             .insert(BattleCamera)
             .insert(ENVIRONMENT_LAYER)
-            .insert(WorldCursor::default())
             .id();
 
         let enemy = spawn(self.enemy.clone(), commands);
