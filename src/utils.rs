@@ -8,7 +8,7 @@ use bevy::{
     reflect::TypeUuid,
     render::{
         camera::RenderTarget,
-        view::{RenderLayers, VisibleEntities},
+        view::{visibility, RenderLayers, VisibleEntities},
     },
     transform::TransformSystem,
 };
@@ -24,7 +24,6 @@ impl Plugin for UtilsPlugin {
             .add_event::<WorldCursorEvent>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
-            .add_startup_system(load_fonts)
             .add_system(delayed_despawn)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
@@ -68,12 +67,14 @@ fn add_materials(
             ..default()
         },
     );
-}
 
-fn load_fonts(mut font: Local<Option<Handle<Font>>>, asset_server: Res<AssetServer>) {
-    if font.is_none() {
-        *font = Some(asset_server.load(DEFAULT_FONT_PATH));
-    }
+    color_materials.set_untracked(
+        blue_color_material(),
+        ColorMaterial {
+            color: Color::BLUE,
+            ..default()
+        },
+    );
 }
 
 #[derive(Component, Default)]
@@ -223,10 +224,7 @@ fn update_progress(
 const SQUARE_MESH_ID: HandleId = HandleId::new(Mesh::TYPE_UUID, 10_000 - 2);
 const WHITE_STANDARD_MATERIAL_ID: HandleId = HandleId::new(StandardMaterial::TYPE_UUID, 10_000 - 2);
 const WHITE_COLOR_MATERIAL_ID: HandleId = HandleId::new(ColorMaterial::TYPE_UUID, 10_000 - 2);
-const DEFAULT_FONT_PATH: &str = "fonts/FiraMono-Medium.ttf";
-pub fn default_font() -> Handle<Font> {
-    Handle::weak(DEFAULT_FONT_PATH.into())
-}
+const BLUE_COLOR_MATERIAL_ID: HandleId = HandleId::new(ColorMaterial::TYPE_UUID, 10_000 - 30);
 
 pub fn square_mesh() -> Handle<Mesh> {
     Handle::weak(SQUARE_MESH_ID)
@@ -234,6 +232,10 @@ pub fn square_mesh() -> Handle<Mesh> {
 
 pub fn white_color_material() -> Handle<ColorMaterial> {
     Handle::weak(WHITE_COLOR_MATERIAL_ID)
+}
+
+pub fn blue_color_material() -> Handle<ColorMaterial> {
+    Handle::weak(BLUE_COLOR_MATERIAL_ID)
 }
 
 pub fn white_standard_material() -> Handle<StandardMaterial> {

@@ -98,6 +98,7 @@ fn start_battle(
                 transform: default(),
             },
             spells: player.spells.clone(),
+            font: asset_server.load("fonts/FiraMono-Medium.ttf"),
         },
         &mut commands,
     );

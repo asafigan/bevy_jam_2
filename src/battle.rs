@@ -461,6 +461,7 @@ pub struct BattlePrefab {
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
     pub spells: Vec<Spell>,
+    pub font: Handle<Font>,
 }
 
 const ENVIRONMENT_LAYER: RenderLayers = RenderLayers::layer(0);
@@ -540,6 +541,7 @@ impl Prefab for BattlePrefab {
 
         let cards = spawn(
             CardsPrefab {
+                font: self.font.clone(),
                 layer: CARDS_LAYER,
                 transform: default(),
                 spells: self.spells.clone(),
