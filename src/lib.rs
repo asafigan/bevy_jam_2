@@ -2,7 +2,7 @@ use battle::{BattlePlugin, BattleState};
 use bevy::{prelude::*, render::view::RenderLayers, text::Text2dBounds};
 use bevy_tweening::TweeningPlugin;
 use board::{BoardPlugin, BoardState};
-use cards::{CardPlugin, CardPrefab, CardsPrefab};
+use cards::{CardPlugin, CardPrefab, CardsPrefab, CardsState};
 use iyes_loopless::prelude::*;
 use main_state::{MainState, MainStatePlugin};
 use player::Player;
@@ -37,13 +37,14 @@ pub fn build_app() -> App {
     .add_plugin(TweeningPlugin)
     .add_plugin(BoardPlugin)
     .add_plugin(UtilsPlugin)
+    .add_plugin(CardPlugin)
     .add_plugin(BattlePlugin)
     .add_plugin(TransitionPlugin)
     .add_plugin(MainStatePlugin)
-    .add_plugin(CardPlugin)
     .add_system(log_states::<BoardState>)
     .add_system(log_states::<BattleState>)
-    .add_system(log_states::<MainState>);
+    .add_system(log_states::<MainState>)
+    .add_system(log_states::<CardsState>);
 
     app
 }

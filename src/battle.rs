@@ -13,11 +13,11 @@ use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
     board::{BoardPrefab, BoardState, Match, WorldCursor},
-    cards::CardsPrefab,
+    cards::{CardsPrefab, CardsState},
     player::{Player, Spell},
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
-    utils::{DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab},
+    utils::{go_to, DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab},
 };
 
 pub struct BattlePlugin;
@@ -41,6 +41,11 @@ impl Plugin for BattlePlugin {
                     .into(),
             )
             .add_enter_system(BattleState::PlayerTurn, start_player_turn)
+            .add_enter_system(BattleState::PlayerTurn, go_to(CardsState::Draw))
+            .add_enter_system(
+                CardsState::End,
+                go_to(BoardState::Ready).run_in_state(BattleState::PlayerTurn),
+            )
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(BattleState::PlayerTurn)
@@ -286,7 +291,6 @@ fn intro(
 struct Matches(Vec<Match>);
 
 fn start_player_turn(mut commands: Commands) {
-    commands.insert_resource(NextState(BoardState::Ready));
     commands.insert_resource(Matches::default());
 }
 
@@ -480,7 +484,6 @@ impl Prefab for BattlePrefab {
                     ..default()
                 },
                 camera: Camera {
-                    // renders after / on top of the main camera
                     priority: 1,
                     is_active: false,
                     ..default()
@@ -520,10 +523,13 @@ impl Prefab for BattlePrefab {
                     ..default()
                 },
                 camera: Camera {
-                    // renders after / on top of the main camera
                     priority: 2,
                     is_active: false,
                     ..default()
+                },
+                projection: OrthographicProjection {
+                    scaling_mode: ScalingMode::FixedVertical(4000.0),
+                    ..Camera2dBundle::default().projection
                 },
                 ..default()
             })

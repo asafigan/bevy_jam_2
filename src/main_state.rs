@@ -5,6 +5,7 @@ use iyes_loopless::prelude::*;
 
 use crate::{
     battle::{BattleCleanedUp, BattlePrefab, BattleResources, BattleState, EnemyKind, EnemyPrefab},
+    cards::CardsState,
     player::Player,
     prefab::spawn,
     transitions::{FadeScreenPrefab, Transition, TransitionDirection, TransitionEnd},
@@ -76,7 +77,7 @@ impl Default for Difficulty {
     fn default() -> Self {
         Self {
             enemy_health: 20,
-            enemy_attack: 100,
+            enemy_attack: 10,
         }
     }
 }
@@ -112,6 +113,7 @@ fn die(player: Res<Player>, mut commands: Commands) {
     if player.current_health == 0 {
         commands.insert_resource(NextState(MainState::Death));
         commands.insert_resource(NextState(BattleState::None));
+        commands.insert_resource(NextState(CardsState::None));
     }
 }
 

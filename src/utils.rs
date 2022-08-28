@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{hash::Hash, time::Duration};
 
 use bevy::{
     asset::HandleId,
@@ -8,6 +8,7 @@ use bevy::{
     render::view::RenderLayers,
     transform::TransformSystem,
 };
+use iyes_loopless::state::NextState;
 
 use crate::prefab::*;
 
@@ -29,12 +30,13 @@ impl Plugin for UtilsPlugin {
 }
 
 fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
-    let square = Quad {
+    let square: Mesh = Quad {
         size: Vec2::splat(1.0),
         ..default()
-    };
+    }
+    .into();
 
-    meshes.set_untracked(square_mesh(), square.into());
+    meshes.set_untracked(square_mesh(), square);
 }
 
 fn add_materials(
@@ -226,4 +228,10 @@ pub fn white_color_material() -> Handle<ColorMaterial> {
 
 pub fn white_standard_material() -> Handle<StandardMaterial> {
     Handle::weak(WHITE_STANDARD_MATERIAL_ID)
+}
+
+pub fn go_to<T: Clone + Eq + Hash + Send + Sync + 'static>(state: T) -> impl Fn(Commands) {
+    move |mut commands| {
+        commands.insert_resource(NextState(state.clone()));
+    }
 }
