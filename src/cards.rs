@@ -7,7 +7,7 @@ use bevy::{
 use iyes_loopless::prelude::*;
 
 use crate::{
-    player::Spell,
+    player::{Player, Spell},
     prefab::{spawn, Prefab},
     utils::{blue_color_material, go_to, square_mesh, white_color_material, WorldHover},
 };
@@ -102,11 +102,12 @@ fn put_cards_in_pile(
 
 fn draw(
     mut draw_piles: Query<&mut Pile, With<DrawPile>>,
-    mut hands: Query<&mut Hand>,
+    mut hands: Query<(Entity, &mut Hand)>,
     mut discard_piles: Query<&mut Pile, (With<DiscardPile>, Without<DrawPile>)>,
+    mut commands: Commands,
 ) {
     let mut draw_pile = draw_piles.single_mut();
-    let mut hand = hands.single_mut();
+    let (entity, mut hand) = hands.single_mut();
     let mut discard_pile = discard_piles.single_mut();
 
     if draw_pile.cards.len() < 5 {
@@ -115,6 +116,8 @@ fn draw(
     }
 
     hand.cards.extend(draw_pile.cards.drain(..5));
+
+    commands.entity(entity).despawn_descendants();
 }
 
 fn hover_cards(mut hands: Query<&mut Hand>, cards: Query<&WorldHover>) {
@@ -165,7 +168,39 @@ fn start_merge(hands: Query<&Hand>, mut commands: Commands) {
     }
 }
 
-fn merge() {}
+fn merge(
+    mut hands: Query<(Entity, &mut Hand)>,
+    mut player: ResMut<Player>,
+    cards: Query<&Spell>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    let (entity, mut hand) = hands.single_mut();
+
+    let mut new_spell = Spell::empty();
+
+    for entity in hand.selected_cards.drain() {
+        let spell = cards.get(entity).unwrap();
+
+        new_spell.attack += spell.attack;
+        new_spell.name = (new_spell.name.to_string() + " " + spell.name.as_ref()).into();
+        match &mut new_spell.elements {
+            std::borrow::Cow::Borrowed(_) => todo!(),
+            std::borrow::Cow::Owned(vec) => vec.extend_from_slice(&spell.elements),
+        }
+    }
+
+    let card = spawn(
+        CardPrefab {
+            font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+            spell: new_spell.clone(),
+        },
+        &mut commands,
+    );
+
+    player.active_spell = Some(new_spell);
+    commands.entity(entity).add_child(card);
+}
 
 fn discard(mut discard_piles: Query<&mut Pile, With<DiscardPile>>, mut hands: Query<&mut Hand>) {
     let mut discard_pile = discard_piles.single_mut();
@@ -173,7 +208,6 @@ fn discard(mut discard_piles: Query<&mut Pile, With<DiscardPile>>, mut hands: Qu
 
     discard_pile.cards.extend(hand.cards.drain(..));
 
-    hand.selected_cards.clear();
     hand.hovered_card = None;
 }
 
@@ -279,6 +313,7 @@ impl Prefab for CardPrefab {
             .entity(entity)
             .insert_bundle(SpatialBundle::default())
             .insert(WorldHover::new([width, height].into()).extend_bottom_bounds(1000.0))
+            .insert(self.spell.clone())
             .with_children(|commands| {
                 commands.spawn_bundle(ColorMesh2dBundle {
                     mesh: square_mesh().into(),
