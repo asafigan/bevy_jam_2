@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{asset::LoadState, prelude::*};
 use iyes_loopless::prelude::*;
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
     prefab::spawn,
     transitions::{FadeScreenPrefab, Transition, TransitionDirection, TransitionEnd},
     ui::*,
+    utils::Loading,
 };
 
 pub struct MainStatePlugin;
@@ -17,9 +18,16 @@ pub struct MainStatePlugin;
 impl Plugin for MainStatePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(OnClickPlugin::<Restart>::new())
-            .add_loopless_state(MainState::Map)
+            .add_loopless_state(MainState::Load)
             .insert_resource(Player::default())
             .insert_resource(Difficulty::default())
+            .add_startup_system(load_assets)
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(MainState::Load)
+                    .with_system(loaded)
+                    .into(),
+            )
             .add_system_set(
                 ConditionSet::new()
                     .run_in_state(MainState::Map)
@@ -66,6 +74,7 @@ impl Plugin for MainStatePlugin {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum MainState {
+    Load,
     Map,
     Battle,
     Death,
@@ -89,6 +98,20 @@ impl Default for Difficulty {
             enemy_health: 40,
             enemy_attack: 10,
         }
+    }
+}
+
+fn load_assets(asset_server: Res<AssetServer>, mut loading: ResMut<Loading>) {
+    loading.assets.extend([
+        asset_server.load_untyped("scenes/battles/super_basic.glb"),
+        asset_server.load_untyped("fonts/FiraMono-Medium.ttf"),
+    ]);
+}
+
+fn loaded(asset_server: Res<AssetServer>, loading: Res<Loading>, mut commands: Commands) {
+    match asset_server.get_group_load_state(loading.assets.iter().map(|x| x.id)) {
+        LoadState::NotLoaded | LoadState::Loading => {}
+        _ => commands.insert_resource(NextState(MainState::Map)),
     }
 }
 

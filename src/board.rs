@@ -3,8 +3,8 @@ use std::time::Duration;
 use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{
-    square_mesh, white_standard_material, DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar,
-    ProgressBarPosition, ProgressBarPrefab, WorldCursor, WorldHover,
+    square_mesh, white_standard_material, DelayedDespawn, DespawnEvent, DespawnReason, Loading,
+    ProgressBar, ProgressBarPosition, ProgressBarPrefab, WorldCursor, WorldHover,
 };
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
@@ -95,17 +95,13 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 }
 
-pub struct Icons {
-    pub icons: Vec<Handle<Image>>,
-}
-
-fn load_icons(asset_server: Res<AssetServer>, mut commands: Commands) {
-    let icons = Element::icon_paths()
+fn load_icons(asset_server: Res<AssetServer>, mut loading: ResMut<Loading>) {
+    let icons: Vec<_> = Element::icon_paths()
         .into_iter()
-        .map(|path| asset_server.load(&path))
+        .map(|path| asset_server.load_untyped(&path))
         .collect();
 
-    commands.insert_resource(Icons { icons });
+    loading.assets.extend(icons);
 }
 
 fn change_gem_material(

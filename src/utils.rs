@@ -22,6 +22,7 @@ impl Plugin for UtilsPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<DespawnEvent>()
             .add_event::<WorldCursorEvent>()
+            .init_resource::<Loading>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
             .add_stage_before(
@@ -83,6 +84,11 @@ fn add_materials(
             ..default()
         },
     );
+}
+
+#[derive(Default)]
+pub struct Loading {
+    pub assets: Vec<HandleUntyped>,
 }
 
 #[derive(Component, Default)]

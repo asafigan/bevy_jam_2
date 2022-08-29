@@ -23,7 +23,9 @@ use crate::{
     player::{Player, Spell},
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
-    utils::{go_to, DelayedDespawn, DespawnReason, ProgressBar, ProgressBarPrefab, WorldCursor},
+    utils::{
+        go_to, DelayedDespawn, DespawnReason, Loading, ProgressBar, ProgressBarPrefab, WorldCursor,
+    },
 };
 
 pub struct BattlePlugin;
@@ -124,17 +126,13 @@ fn send_cleanup_event(mut events: EventWriter<BattleCleanedUp>) {
     events.send(BattleCleanedUp);
 }
 
-pub struct EnemyModels {
-    pub models: Vec<Handle<Gltf>>,
-}
-
-fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
-    let models = EnemyKind::gltf_paths()
+fn load_enemy_models(asset_server: Res<AssetServer>, mut loading: ResMut<Loading>) {
+    let models: Vec<_> = EnemyKind::gltf_paths()
         .into_iter()
-        .map(|path| asset_server.load(&path))
+        .map(|path| asset_server.load_untyped(&path))
         .collect();
 
-    commands.insert_resource(EnemyModels { models });
+    loading.assets.extend(models);
 }
 
 fn stop_board(mut commands: Commands, state: Res<CurrentState<BoardState>>) {
