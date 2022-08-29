@@ -60,6 +60,7 @@ pub enum CardsState {
     End,
 }
 
+#[allow(clippy::type_complexity)]
 fn put_cards_in_hand(
     hands: Query<(&Hand, &Transform, &WorldHover), (Changed<Hand>, Changed<WorldHover>)>,
     mut cards: Query<&mut Transform, Without<Hand>>,
@@ -121,7 +122,7 @@ fn draw(
 
     if draw_pile.cards.len() < 5 {
         fastrand::shuffle(&mut discard_pile.cards);
-        draw_pile.cards.extend(discard_pile.cards.drain(..));
+        draw_pile.cards.append(&mut discard_pile.cards);
     }
 
     hand.cards.extend(draw_pile.cards.drain(..5));
@@ -230,7 +231,7 @@ fn discard(mut discard_piles: Query<&mut Pile, With<DiscardPile>>, mut hands: Qu
     let mut discard_pile = discard_piles.single_mut();
     let mut hand = hands.single_mut();
 
-    discard_pile.cards.extend(hand.cards.drain(..));
+    discard_pile.cards.append(&mut hand.cards);
 
     hand.hovered_card = None;
 }

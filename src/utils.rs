@@ -150,7 +150,7 @@ fn propagate_render_layers(
     mut commands: Commands,
 ) {
     for root in &roots {
-        let layer = layers.get(root).unwrap().clone();
+        let layer = *layers.get(root).unwrap();
 
         let mut children: Vec<Entity> = children_query
             .get(root)

@@ -693,7 +693,6 @@ impl Prefab for BattlePrefab {
             .spawn_bundle(Camera2dBundle {
                 camera_2d: Camera2d {
                     clear_color: ClearColorConfig::None,
-                    ..default()
                 },
                 camera: Camera {
                     priority: 2,
