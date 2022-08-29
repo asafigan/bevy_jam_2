@@ -1,6 +1,6 @@
 # Magic Mixologist
 
-Made for [Bevy Jame 2](https://itch.io/jam/bevy-jam-2).
+Made for [Bevy Jam 2](https://itch.io/jam/bevy-jam-2).
 
 You are a wizard take loves combining and mixing his spells. Can you defeat the demon that haunts your dreams?
 
