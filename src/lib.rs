@@ -20,6 +20,9 @@ mod tween_untils;
 mod ui;
 mod utils;
 
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
 pub fn build_app() -> App {
     let mut app = App::new();
 
@@ -29,6 +32,11 @@ pub fn build_app() -> App {
             present_mode: bevy::window::PresentMode::Immediate,
             ..Default::default()
         });
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_plugin(wasm::WasmPlugin);
     }
 
     app.insert_resource(AmbientLight {

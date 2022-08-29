@@ -480,6 +480,7 @@ dependencies = [
  "iyes_loopless",
  "strum",
  "strum_macros",
+ "web-sys",
 ]
 
 [[package]]
