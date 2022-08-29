@@ -361,7 +361,7 @@ fn match_gems(
     let mut index = 0;
     while index < matches.len() {
         let mut current = matches.remove(index);
-        let mut i = 0;
+        let mut i = index;
         while i < matches.len() {
             if !matches[i].tiles.is_disjoint(&current.tiles) {
                 let linked = matches.remove(i);

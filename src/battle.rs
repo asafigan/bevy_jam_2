@@ -323,60 +323,60 @@ fn animate_matches(
         let delay_between_matches = Duration::from_secs_f32(BETWEEN_MATCH_DELAY);
 
         let mut delay = start_delay;
-        for event in events
-            .iter()
-            .filter(|x| spell.elements.contains(&x.element))
-        {
-            let material = materials.add(StandardMaterial {
-                base_color: event.element.color(),
-                base_color_texture: Some(asset_server.load("particles/star_06.png")),
-                double_sided: true,
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
+        for event in events.iter() {
+            if spell.elements.contains(&event.element) {
+                let material = materials.add(StandardMaterial {
+                    base_color: event.element.color(),
+                    base_color_texture: Some(asset_server.load("particles/star_06.png")),
+                    double_sided: true,
+                    unlit: true,
+                    alpha_mode: AlphaMode::Blend,
+                    ..default()
+                });
 
-            for tile in &event.tiles {
-                let transform = tiles.get(*tile).unwrap();
+                for tile in &event.tiles {
+                    let transform = tiles.get(*tile).unwrap();
 
-                let transform = transform.compute_transform() * Transform::from_xyz(0.0, 0.0, 1.0);
-                commands
-                    .spawn_bundle(SpatialBundle {
-                        transform,
-                        ..default()
-                    })
-                    .insert(BOARD_LAYER)
-                    .insert(DelayedDespawn::from_seconds(0.7))
-                    .insert(Animator::new(Delay::new(delay).then(Tween::new(
-                        EaseFunction::QuadraticInOut,
-                        TweeningType::Once,
-                        Duration::from_secs_f32(0.5),
-                        TransformPositionLens {
-                            start: transform.translation,
-                            end: Vec3::new(0.0, -2.5, 1.0),
-                        },
-                    ))))
-                    .with_children(|c| {
-                        c.spawn_bundle(SpatialBundle::default())
-                            .insert(ParticleEmitter {
-                                material: material.clone(),
-                                timer: Timer::from_seconds(1.0 / 200.0, true),
-                                size_range: 0.2..0.3,
-                                velocity_range: -0.01..0.01,
-                                lifetime_range: 0.5..1.0,
-                                particles_track: true,
-                            });
+                    let transform =
+                        transform.compute_transform() * Transform::from_xyz(0.0, 0.0, 1.0);
+                    commands
+                        .spawn_bundle(SpatialBundle {
+                            transform,
+                            ..default()
+                        })
+                        .insert(BOARD_LAYER)
+                        .insert(DelayedDespawn::new(delay + Duration::from_secs_f32(0.7)))
+                        .insert(Animator::new(Delay::new(delay).then(Tween::new(
+                            EaseFunction::QuadraticInOut,
+                            TweeningType::Once,
+                            Duration::from_secs_f32(0.5),
+                            TransformPositionLens {
+                                start: transform.translation,
+                                end: Vec3::new(0.0, -2.5, 1.0),
+                            },
+                        ))))
+                        .with_children(|c| {
+                            c.spawn_bundle(SpatialBundle::default())
+                                .insert(ParticleEmitter {
+                                    material: material.clone(),
+                                    timer: Timer::from_seconds(1.0 / 200.0, true),
+                                    size_range: 0.2..0.3,
+                                    velocity_range: -0.01..0.01,
+                                    lifetime_range: 0.5..1.0,
+                                    particles_track: true,
+                                });
 
-                        c.spawn_bundle(SpatialBundle::default())
-                            .insert(ParticleEmitter {
-                                material: material.clone(),
-                                timer: Timer::from_seconds(1.0 / 100.0, true),
-                                size_range: 0.2..0.3,
-                                velocity_range: -0.01..0.01,
-                                lifetime_range: 0.2..0.5,
-                                particles_track: false,
-                            });
-                    });
+                            c.spawn_bundle(SpatialBundle::default())
+                                .insert(ParticleEmitter {
+                                    material: material.clone(),
+                                    timer: Timer::from_seconds(1.0 / 100.0, true),
+                                    size_range: 0.2..0.3,
+                                    velocity_range: -0.01..0.01,
+                                    lifetime_range: 0.2..0.5,
+                                    particles_track: false,
+                                });
+                        });
+                }
 
                 delay += delay_between_matches;
             }
