@@ -356,17 +356,30 @@ impl Prefab for CardPrefab {
                     ..default()
                 });
 
+                for element in self.spell.elements.as_ref() {
+                    commands.spawn_bundle(SpriteBundle {
+                        sprite: Sprite {
+                            color: element.color() * Vec4::new(1.0, 1.0, 1.0, 0.5),
+                            custom_size: Some([400.0, 400.0].into()),
+                            ..default()
+                        },
+                        texture: element.icon_handle(),
+                        transform: Transform::from_xyz(0.0, 0.0, 1.0),
+                        ..default()
+                    });
+                }
+
                 commands.spawn_bundle(Text2dBundle {
                     text: Text::from_section(self.spell.name.to_string(), style.clone())
                         .with_alignment(alignment),
-                    transform: Transform::from_xyz(0.0, 100.0 * SCALE, 1.0),
+                    transform: Transform::from_xyz(0.0, 100.0 * SCALE, 2.0),
                     ..default()
                 });
 
                 commands.spawn_bundle(Text2dBundle {
                     text: Text::from_section(self.spell.attack.to_string(), style)
                         .with_alignment(alignment),
-                    transform: Transform::from_xyz(0.0, -70.0 * SCALE, 1.0),
+                    transform: Transform::from_xyz(0.0, -70.0 * SCALE, 2.0),
                     ..default()
                 });
             });

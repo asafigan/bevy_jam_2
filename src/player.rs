@@ -19,11 +19,11 @@ impl Default for Player {
             spells: vec![
                 Spell::FIRE,
                 Spell::FIRE,
-                Spell::SPALSH,
-                Spell::SPALSH,
+                Spell::SPLASH,
+                Spell::SPLASH,
                 Spell::WHIP,
                 Spell::WHIP,
-                Spell::BOLT,
+                Spell::RAY,
                 Spell::CURSE,
             ],
             active_spell: None,
@@ -45,7 +45,7 @@ impl Spell {
         attack: 2,
     };
 
-    const SPALSH: Self = Spell {
+    const SPLASH: Self = Spell {
         name: Cow::Borrowed("Splash"),
         elements: Cow::Borrowed(&[Element::Water]),
         attack: 2,
@@ -53,19 +53,19 @@ impl Spell {
 
     const WHIP: Self = Spell {
         name: Cow::Borrowed("Whip"),
-        elements: Cow::Borrowed(&[Element::Nature]),
+        elements: Cow::Borrowed(&[Element::Grass]),
         attack: 2,
     };
 
-    const BOLT: Self = Spell {
-        name: Cow::Borrowed("Bolt"),
-        elements: Cow::Borrowed(&[Element::Electric]),
+    const RAY: Self = Spell {
+        name: Cow::Borrowed("Ray"),
+        elements: Cow::Borrowed(&[Element::Light]),
         attack: 3,
     };
 
     const CURSE: Self = Spell {
         name: Cow::Borrowed("Curse"),
-        elements: Cow::Borrowed(&[Element::Death]),
+        elements: Cow::Borrowed(&[Element::Dark]),
         attack: 3,
     };
 

@@ -31,6 +31,7 @@ impl Plugin for BoardPlugin {
             .add_event::<Fall>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
+            .add_startup_system(load_icons)
             .add_system(change_gem_material)
             .add_loopless_state(BoardState::None)
             .add_enter_system(BoardState::Ready, reset_timer)
@@ -89,16 +90,22 @@ fn add_meshes(mut meshes: ResMut<Assets<Mesh>>) {
 }
 
 fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
-    for element in [
-        Element::Life,
-        Element::Death,
-        Element::Water,
-        Element::Fire,
-        Element::Nature,
-        Element::Electric,
-    ] {
+    for element in Element::iter() {
         materials.set_untracked(element.material_handle(), element.material())
     }
+}
+
+struct Icons {
+    icons: Vec<Handle<Image>>,
+}
+
+fn load_icons(asset_server: Res<AssetServer>, mut commands: Commands) {
+    let icons = Element::icon_paths()
+        .into_iter()
+        .map(|path| asset_server.load(&path))
+        .collect();
+
+    commands.insert_resource(Icons { icons });
 }
 
 fn change_gem_material(
@@ -574,12 +581,12 @@ fn stop_falling(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumVariantNames, EnumIter, EnumCount, Display)]
 pub enum Element {
-    Life,
-    Death,
+    Heal,
+    Dark,
     Water,
     Fire,
-    Nature,
-    Electric,
+    Grass,
+    Light,
 }
 
 impl Element {
@@ -597,6 +604,18 @@ impl Element {
         ))
     }
 
+    pub fn icon_path(&self) -> String {
+        format!("icons/{self}.png")
+    }
+
+    pub fn icon_paths() -> Vec<String> {
+        Self::iter().map(|x| x.icon_path()).collect()
+    }
+
+    pub fn icon_handle(&self) -> Handle<Image> {
+        Handle::weak(HandleId::AssetPathId(self.icon_path().as_str().into()))
+    }
+
     fn material(&self) -> StandardMaterial {
         StandardMaterial {
             base_color: self.color() * 0.6,
@@ -607,14 +626,14 @@ impl Element {
         }
     }
 
-    fn color(&self) -> Color {
+    pub fn color(&self) -> Color {
         match self {
-            Element::Life => Color::PINK,
-            Element::Death => Color::DARK_GRAY,
+            Element::Heal => Color::PINK,
+            Element::Dark => Color::DARK_GRAY,
             Element::Water => Color::BLUE * 0.8,
             Element::Fire => Color::ORANGE_RED,
-            Element::Nature => Color::GREEN * 0.8,
-            Element::Electric => Color::YELLOW,
+            Element::Grass => Color::GREEN * 0.8,
+            Element::Light => Color::YELLOW,
         }
     }
 }
@@ -686,7 +705,7 @@ pub struct BoardPrefab {
 
 impl BoardPrefab {
     pub fn random_gems() -> [[Element; 5]; 6] {
-        let mut gems = [[Element::Life; 5]; 6];
+        let mut gems = [[Element::Heal; 5]; 6];
         for column in &mut gems {
             for gem in column {
                 *gem = Element::random();

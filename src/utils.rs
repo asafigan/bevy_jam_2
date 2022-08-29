@@ -8,11 +8,11 @@ use bevy::{
     reflect::TypeUuid,
     render::{
         camera::RenderTarget,
-        view::{visibility, RenderLayers, VisibleEntities},
+        view::{RenderLayers, VisibleEntities},
     },
     transform::TransformSystem,
 };
-use iyes_loopless::{prelude::*, state::NextState};
+use iyes_loopless::state::NextState;
 
 use crate::prefab::*;
 

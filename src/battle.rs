@@ -331,7 +331,7 @@ fn player_attack(
 
     let heal: u32 = matches
         .iter()
-        .filter(|x| x.element == Element::Life)
+        .filter(|x| x.element == Element::Heal)
         .map(|x| x.tiles.len() as u32)
         .sum();
 
