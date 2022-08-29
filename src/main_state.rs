@@ -58,7 +58,6 @@ impl Plugin for MainStatePlugin {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum MainState {
-    MainMenu,
     Map,
     Battle,
     Death,
@@ -164,8 +163,8 @@ fn go_to_restart(mut commands: Commands, mut events: EventReader<Restart>) {
 }
 
 fn clean_up_battle(
-    mut commands: Commands,
-    mut battle_resources: ResMut<BattleResources>,
+    commands: Commands,
+    battle_resources: ResMut<BattleResources>,
     mut events: EventReader<TransitionEnd>,
 ) {
     if events.iter().count() > 0 {

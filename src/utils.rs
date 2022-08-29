@@ -173,40 +173,143 @@ pub struct ProgressBar {
     progress: Entity,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
+pub enum ProgressBarPosition {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Default, Clone)]
 pub struct ProgressBarPrefab {
     pub starting_percentage: f32,
+    pub size: Vec2,
+    pub border: f32,
+    pub color: Color,
+    pub border_color: Color,
+    pub background_color: Color,
+    pub position: ProgressBarPosition,
     pub transform: Transform,
 }
 
 impl Prefab for ProgressBarPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mesh = commands
-            .spawn_bundle(PbrBundle {
-                mesh: square_mesh(),
-                material: white_standard_material(),
-                ..default()
-            })
-            .insert(NotShadowCaster)
-            .insert(NotShadowReceiver)
-            .id();
+        let bar = self.clone();
+        commands.add(move |world: &mut World| {
+            let (progress_color, background_color, border_color) =
+                world.resource_scope(|_, mut materials: Mut<Assets<StandardMaterial>>| {
+                    (
+                        materials.add(StandardMaterial {
+                            base_color: bar.color,
+                            unlit: true,
+                            alpha_mode: if bar.color.a() < 1.0 {
+                                AlphaMode::Blend
+                            } else {
+                                default()
+                            },
+                            ..default()
+                        }),
+                        materials.add(StandardMaterial {
+                            base_color: bar.background_color,
+                            unlit: true,
+                            alpha_mode: if bar.background_color.a() < 1.0 {
+                                AlphaMode::Blend
+                            } else {
+                                default()
+                            },
+                            ..default()
+                        }),
+                        materials.add(StandardMaterial {
+                            base_color: bar.border_color,
+                            unlit: true,
+                            alpha_mode: if bar.border_color.a() < 1.0 {
+                                AlphaMode::Blend
+                            } else {
+                                default()
+                            },
+                            ..default()
+                        }),
+                    )
+                });
 
-        let progress = commands
-            .spawn_bundle(SpatialBundle::default())
-            .add_child(mesh)
-            .id();
+            let mesh = world
+                .spawn()
+                .insert_bundle(PbrBundle {
+                    mesh: square_mesh(),
+                    material: progress_color,
+                    transform: Transform::from_translation(match bar.position {
+                        ProgressBarPosition::Left => Vec3::X / 2.0,
+                        ProgressBarPosition::Center => default(),
+                        ProgressBarPosition::Right => -Vec3::X / 2.0,
+                    }),
+                    ..default()
+                })
+                .insert(NotShadowCaster)
+                .insert(NotShadowReceiver)
+                .id();
 
-        commands
-            .entity(entity)
-            .insert_bundle(SpatialBundle {
-                transform: self.transform,
-                ..default()
-            })
-            .insert(ProgressBar {
-                percentage: self.starting_percentage,
-                progress,
-            })
-            .add_child(progress);
+            let progress = world
+                .spawn()
+                .insert_bundle(SpatialBundle {
+                    transform: Transform::from_translation(match bar.position {
+                        ProgressBarPosition::Left => -Vec3::X / 2.0,
+                        ProgressBarPosition::Center => default(),
+                        ProgressBarPosition::Right => Vec3::X / 2.0,
+                    }),
+                    ..default()
+                })
+                .push_children(&[mesh])
+                .id();
+
+            let background = world
+                .spawn()
+                .insert_bundle(PbrBundle {
+                    mesh: square_mesh(),
+                    material: background_color,
+                    transform: Transform::from_translation(-Vec3::Z * 0.001),
+                    ..default()
+                })
+                .insert(NotShadowCaster)
+                .insert(NotShadowReceiver)
+                .id();
+
+            let inner = world
+                .spawn()
+                .insert_bundle(SpatialBundle {
+                    transform: Transform::from_scale(
+                        ((bar.size - bar.border).max(Vec2::ZERO)).extend(1.0),
+                    ),
+                    ..default()
+                })
+                .push_children(&[progress, background])
+                .id();
+
+            let border = world
+                .spawn()
+                .insert_bundle(PbrBundle {
+                    mesh: square_mesh(),
+                    material: border_color,
+                    transform: Transform::from_scale(bar.size.extend(1.0))
+                        .with_translation(-Vec3::Z * 0.002),
+                    ..default()
+                })
+                .insert(NotShadowCaster)
+                .insert(NotShadowReceiver)
+                .id();
+
+            world
+                .entity_mut(entity)
+                .insert_bundle(SpatialBundle {
+                    transform: bar.transform,
+                    ..default()
+                })
+                .insert(ProgressBar {
+                    percentage: bar.starting_percentage,
+                    progress,
+                })
+                .push_children(&[inner, border]);
+        });
     }
 }
 
@@ -340,7 +443,7 @@ fn track_world_hover(
             .iter()
             .filter(|(_, _, entities)| entities.entities.contains(&check_visibility_of))
             .filter_map(|(entity, cursor, _)| cursor.position.map(|x| (entity, x)))
-            .filter(|(entity, position)| {
+            .filter(|(_, position)| {
                 let matrix = transform.compute_matrix().inverse();
                 let position = matrix.transform_point3(position.extend(0.0)).truncate();
 

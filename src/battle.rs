@@ -112,8 +112,8 @@ fn send_cleanup_event(mut events: EventWriter<BattleCleanedUp>) {
     events.send(BattleCleanedUp);
 }
 
-struct EnemyModels {
-    models: Vec<Handle<Gltf>>,
+pub struct EnemyModels {
+    pub models: Vec<Handle<Gltf>>,
 }
 
 fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
@@ -527,7 +527,11 @@ impl Prefab for BattlePrefab {
         let health_bar = spawn(
             ProgressBarPrefab {
                 starting_percentage: 1.0,
-                transform: Transform::from_xyz(0.0, -2.9, 1.0).with_scale([6.0, 0.3, 1.0].into()),
+                size: [6.0, 0.3].into(),
+                border: 0.1,
+                transform: Transform::from_xyz(0.0, -2.9, 1.0),
+                color: Color::hex(HEALTH_COLOR_HEX).unwrap(),
+                ..default()
             },
             commands,
         );
@@ -628,13 +632,18 @@ pub struct EnemyPrefab {
     pub attack: u32,
 }
 
+const HEALTH_COLOR_HEX: &str = "871e16";
+
 impl Prefab for EnemyPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         let health_bar = spawn(
             ProgressBarPrefab {
                 starting_percentage: 1.0,
-                transform: self.transform
-                    * Transform::from_xyz(0.0, 0.2, 1.2).with_scale([1.0, 0.2, 1.0].into()),
+                border: 0.1,
+                size: [1.0, 0.2].into(),
+                transform: self.transform * Transform::from_xyz(0.0, 0.2, 1.2),
+                color: Color::hex(HEALTH_COLOR_HEX).unwrap(),
+                ..default()
             },
             commands,
         );

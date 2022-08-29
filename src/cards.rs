@@ -99,11 +99,11 @@ fn put_cards_in_hand(
 
 fn put_cards_in_pile(
     piles: Query<(&Pile, &Transform), Changed<Pile>>,
-    mut cards: Query<(&mut Transform, &mut Visibility), Without<Pile>>,
+    mut cards: Query<&mut Transform, Without<Pile>>,
 ) {
     for (pile, pile_transform) in &piles {
         let mut iter = cards.iter_many_mut(&pile.cards);
-        while let Some((mut transform, mut visibility)) = iter.fetch_next() {
+        while let Some(mut transform) = iter.fetch_next() {
             *transform = pile_transform.with_rotation(Quat::from_rotation_y(180_f32.to_radians()));
         }
     }

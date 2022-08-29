@@ -4,7 +4,7 @@ use crate::prefab::*;
 use crate::tween_untils::TweenType;
 use crate::utils::{
     square_mesh, white_standard_material, DelayedDespawn, DespawnEvent, DespawnReason, ProgressBar,
-    ProgressBarPrefab, WorldCursor, WorldHover,
+    ProgressBarPosition, ProgressBarPrefab, WorldCursor, WorldHover,
 };
 use bevy::pbr::{NotShadowCaster, NotShadowReceiver};
 use bevy::render::view::RenderLayers;
@@ -95,8 +95,8 @@ fn add_materials(mut materials: ResMut<Assets<StandardMaterial>>) {
     }
 }
 
-struct Icons {
-    icons: Vec<Handle<Image>>,
+pub struct Icons {
+    pub icons: Vec<Handle<Image>>,
 }
 
 fn load_icons(asset_server: Res<AssetServer>, mut commands: Commands) {
@@ -751,8 +751,8 @@ impl Prefab for BoardPrefab {
 
         children.push(spawn(
             TimerPrefab {
-                transform: Transform::from_xyz(0.0, BOARD_MIDDLE.y + 0.5, 0.0)
-                    .with_scale([BOARD_MIDDLE.x * 2.0, 0.25, 1.0].into()),
+                size: [BOARD_MIDDLE.x * 2.0, 0.25].into(),
+                transform: Transform::from_xyz(0.0, BOARD_MIDDLE.y + 0.2, 0.0),
             },
             commands,
         ));
@@ -830,14 +830,20 @@ impl Prefab for TilePrefab {
 struct TimerProgress;
 
 struct TimerPrefab {
+    size: Vec2,
     transform: Transform,
 }
 
 impl Prefab for TimerPrefab {
     fn construct(&self, entity: Entity, commands: &mut Commands) {
         ProgressBarPrefab {
+            size: self.size,
             starting_percentage: 1.0,
             transform: self.transform,
+            background_color: Color::NONE,
+            border_color: Color::NONE,
+            position: ProgressBarPosition::Center,
+            ..default()
         }
         .construct(entity, commands);
 
