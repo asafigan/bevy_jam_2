@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 
-bevy = { version = "0.8", features = ["dynamic"] }
+bevy = { version = "0.8" }
 fastrand = "1"
 bevy_tweening = { version = "0.5", features = ["bevy_asset"] }
 iyes_loopless = "0.7"
