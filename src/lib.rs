@@ -23,11 +23,15 @@ mod utils;
 pub fn build_app() -> App {
     let mut app = App::new();
 
-    app.insert_resource(WindowDescriptor {
-        present_mode: bevy::window::PresentMode::Immediate,
-        ..Default::default()
-    })
-    .insert_resource(AmbientLight {
+    #[cfg(target_os = "linux")]
+    {
+        app.insert_resource(WindowDescriptor {
+            present_mode: bevy::window::PresentMode::Immediate,
+            ..Default::default()
+        });
+    }
+
+    app.insert_resource(AmbientLight {
         brightness: 2.0,
         ..default()
     })
