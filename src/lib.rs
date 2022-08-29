@@ -5,23 +5,25 @@ use board::{BoardPlugin, BoardState};
 use cards::{CardPlugin, CardsState};
 use iyes_loopless::prelude::*;
 use main_state::{MainState, MainStatePlugin};
+use particles::ParticlesPlugin;
 use std::{fmt::Debug, hash::Hash};
 use transitions::TransitionPlugin;
 use utils::UtilsPlugin;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm;
 
 mod battle;
 mod board;
 mod cards;
 mod main_state;
+mod particles;
 mod player;
 mod prefab;
 mod transitions;
 mod tween_untils;
 mod ui;
-mod utils;
-
-#[cfg(target_arch = "wasm32")]
-mod wasm;
+pub mod utils;
 
 pub fn build_app() -> App {
     let mut app = App::new();
@@ -51,6 +53,7 @@ pub fn build_app() -> App {
     .add_plugin(BattlePlugin)
     .add_plugin(TransitionPlugin)
     .add_plugin(MainStatePlugin)
+    .add_plugin(ParticlesPlugin)
     .add_system(log_states::<BoardState>)
     .add_system(log_states::<BattleState>)
     .add_system(log_states::<MainState>)

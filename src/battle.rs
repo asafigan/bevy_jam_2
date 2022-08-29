@@ -7,13 +7,19 @@ use bevy::{
     prelude::*,
     render::{camera::ScalingMode, view::RenderLayers},
 };
+use bevy_tweening::{
+    lens::TransformPositionLens, Animator, Delay, EaseFunction, Tween, TweeningType,
+};
 use iyes_loopless::prelude::*;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter, EnumVariantNames};
 
 use crate::{
-    board::{BoardPrefab, BoardState, Element, Match},
+    board::{
+        BoardPrefab, BoardState, Element, Match, Tile, BETWEEN_MATCH_DELAY, MATCH_START_DELAY,
+    },
     cards::{CardsPrefab, CardsState},
+    particles::ParticleEmitter,
     player::{Player, Spell},
     prefab::{spawn, Prefab},
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
@@ -50,6 +56,7 @@ impl Plugin for BattlePlugin {
                 ConditionSet::new()
                     .run_in_state(BattleState::PlayerTurn)
                     .with_system(track_matches)
+                    .with_system(animate_matches)
                     .with_system(start_outtro)
                     .with_system(kill_enemies)
                     .with_system(end_player_turn.run_in_state(BoardState::End))
@@ -57,7 +64,9 @@ impl Plugin for BattlePlugin {
             )
             .add_enter_system(
                 BoardState::End,
-                player_attack.run_in_state(BattleState::PlayerTurn),
+                player_attack
+                    .chain(animate_attack)
+                    .run_in_state(BattleState::PlayerTurn),
             )
             .add_enter_system(BattleState::EnemyTurn, enemies_attack)
             .add_system_set(
@@ -299,6 +308,146 @@ fn start_player_turn(mut commands: Commands) {
 
 fn track_matches(mut events: EventReader<Match>, mut matches: ResMut<Matches>) {
     matches.0.extend(events.iter().cloned());
+}
+
+fn animate_matches(
+    mut events: EventReader<Match>,
+    mut commands: Commands,
+    tiles: Query<&GlobalTransform, With<Tile>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    player: Res<Player>,
+) {
+    if let Some(spell) = player.active_spell.as_ref() {
+        let start_delay = Duration::from_secs_f32(MATCH_START_DELAY);
+        let delay_between_matches = Duration::from_secs_f32(BETWEEN_MATCH_DELAY);
+
+        let mut delay = start_delay;
+        for event in events
+            .iter()
+            .filter(|x| spell.elements.contains(&x.element))
+        {
+            let material = materials.add(StandardMaterial {
+                base_color: event.element.color(),
+                base_color_texture: Some(asset_server.load("particles/star_06.png")),
+                double_sided: true,
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            for tile in &event.tiles {
+                let transform = tiles.get(*tile).unwrap();
+
+                let transform = transform.compute_transform() * Transform::from_xyz(0.0, 0.0, 1.0);
+                commands
+                    .spawn_bundle(SpatialBundle {
+                        transform,
+                        ..default()
+                    })
+                    .insert(BOARD_LAYER)
+                    .insert(DelayedDespawn::from_seconds(0.7))
+                    .insert(Animator::new(Delay::new(delay).then(Tween::new(
+                        EaseFunction::QuadraticInOut,
+                        TweeningType::Once,
+                        Duration::from_secs_f32(0.5),
+                        TransformPositionLens {
+                            start: transform.translation,
+                            end: Vec3::new(0.0, -2.5, 1.0),
+                        },
+                    ))))
+                    .with_children(|c| {
+                        c.spawn_bundle(SpatialBundle::default())
+                            .insert(ParticleEmitter {
+                                material: material.clone(),
+                                timer: Timer::from_seconds(1.0 / 200.0, true),
+                                size_range: 0.2..0.3,
+                                velocity_range: -0.01..0.01,
+                                lifetime_range: 0.5..1.0,
+                                particles_track: true,
+                            });
+
+                        c.spawn_bundle(SpatialBundle::default())
+                            .insert(ParticleEmitter {
+                                material: material.clone(),
+                                timer: Timer::from_seconds(1.0 / 100.0, true),
+                                size_range: 0.2..0.3,
+                                velocity_range: -0.01..0.01,
+                                lifetime_range: 0.2..0.5,
+                                particles_track: false,
+                            });
+                    });
+
+                delay += delay_between_matches;
+            }
+        }
+    }
+}
+
+fn animate_attack(
+    matches: Res<Matches>,
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    player: Res<Player>,
+) {
+    if let Some(spell) = player.active_spell.as_ref() {
+        for event in matches
+            .0
+            .iter()
+            .filter(|x| spell.elements.contains(&x.element))
+        {
+            let material = materials.add(StandardMaterial {
+                base_color: event.element.color(),
+                base_color_texture: Some(asset_server.load("particles/star_06.png")),
+                double_sided: true,
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            for _ in &event.tiles {
+                let transform = Transform::from_xyz(0.0, -2.5, 1.0);
+                commands
+                    .spawn_bundle(SpatialBundle {
+                        transform,
+                        ..default()
+                    })
+                    .insert(BOARD_LAYER)
+                    .insert(DelayedDespawn::from_seconds(0.7))
+                    .insert(Animator::new(Tween::new(
+                        EaseFunction::QuadraticInOut,
+                        TweeningType::Once,
+                        Duration::from_secs_f32(0.5),
+                        TransformPositionLens {
+                            start: transform.translation,
+                            end: Vec3::new(0.0, 2.1, 1.0),
+                        },
+                    )))
+                    .with_children(|c| {
+                        c.spawn_bundle(SpatialBundle::default())
+                            .insert(ParticleEmitter {
+                                material: material.clone(),
+                                timer: Timer::from_seconds(1.0 / 200.0, true),
+                                size_range: 0.2..0.3,
+                                velocity_range: -0.01..0.01,
+                                lifetime_range: 0.5..1.0,
+                                particles_track: true,
+                            });
+
+                        c.spawn_bundle(SpatialBundle::default())
+                            .insert(ParticleEmitter {
+                                material: material.clone(),
+                                timer: Timer::from_seconds(1.0 / 100.0, true),
+                                size_range: 0.2..0.3,
+                                velocity_range: -0.01..0.01,
+                                lifetime_range: 0.2..0.5,
+                                particles_track: false,
+                            });
+                    });
+            }
+        }
+    }
 }
 
 fn player_attack(

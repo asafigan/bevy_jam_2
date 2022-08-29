@@ -2,7 +2,7 @@ use std::{hash::Hash, time::Duration};
 
 use bevy::{
     asset::HandleId,
-    ecs::system::AsSystemLabel,
+    ecs::{query::QueryEntityError, system::AsSystemLabel},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::{shape::Quad, *},
     reflect::TypeUuid,
@@ -24,12 +24,20 @@ impl Plugin for UtilsPlugin {
             .add_event::<WorldCursorEvent>()
             .add_startup_system(add_meshes)
             .add_startup_system(add_materials)
-            .add_system(delayed_despawn)
+            .add_stage_before(
+                CoreStage::PostUpdate,
+                "delayed_despawn",
+                SystemStage::parallel(),
+            )
+            .add_system_to_stage("delayed_despawn", delayed_despawn)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
                 update_progress.before(TransformSystem::TransformPropagate),
             )
-            .add_system_to_stage(CoreStage::PostUpdate, propagate_render_layers)
+            .add_system_to_stage(
+                "delayed_despawn",
+                propagate_render_layers.before(delayed_despawn),
+            )
             .add_system_to_stage(CoreStage::PreUpdate, update_world_cursors)
             .add_system_to_stage(
                 CoreStage::PreUpdate,
@@ -153,12 +161,16 @@ fn propagate_render_layers(
 
         while !children.is_empty() {
             for child in std::mem::take(&mut children) {
-                if let Ok(mut child_layer) = layers.get_mut(child) {
-                    if *child_layer != layer {
-                        *child_layer = layer;
+                match layers.get_mut(child) {
+                    Ok(mut child_layer) => {
+                        if *child_layer != layer {
+                            *child_layer = layer;
+                        }
                     }
-                } else {
-                    commands.entity(child).insert(layer);
+                    Err(QueryEntityError::QueryDoesNotMatch(entity)) => {
+                        commands.entity(entity).insert(layer);
+                    }
+                    _ => {}
                 }
 
                 children.extend(children_query.get(child).into_iter().flatten().cloned());

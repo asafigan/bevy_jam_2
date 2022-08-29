@@ -378,10 +378,13 @@ fn match_gems(
     events.send_batch(matches.into_iter());
 }
 
+pub const MATCH_START_DELAY: f32 = 0.1;
+pub const BETWEEN_MATCH_DELAY: f32 = 0.1;
+
 fn destroy_matches(mut events: EventReader<Match>, tiles: Query<&Tile>, mut commands: Commands) {
-    let start_delay = Duration::from_secs_f32(0.1);
+    let start_delay = Duration::from_secs_f32(MATCH_START_DELAY);
     let delay_between_gems = Duration::from_secs_f32(0.0);
-    let delay_between_matches = Duration::from_secs_f32(0.2);
+    let delay_between_matches = Duration::from_secs_f32(BETWEEN_MATCH_DELAY);
     let animation_time = Duration::from_secs_f32(0.1);
 
     let mut delay = start_delay;
