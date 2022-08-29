@@ -113,11 +113,14 @@ fn send_cleanup_event(mut events: EventWriter<BattleCleanedUp>) {
 }
 
 struct EnemyModels {
-    models: Vec<HandleUntyped>,
+    models: Vec<Handle<Gltf>>,
 }
 
 fn load_enemy_models(asset_server: Res<AssetServer>, mut commands: Commands) {
-    let models = asset_server.load_folder("models/enemies").unwrap();
+    let models = EnemyKind::gltf_paths()
+        .into_iter()
+        .map(|path| asset_server.load(&path))
+        .collect();
 
     commands.insert_resource(EnemyModels { models });
 }
@@ -695,14 +698,22 @@ impl EnemyKind {
         Self::iter().nth(n).unwrap()
     }
 
+    pub fn gltf_paths() -> Vec<String> {
+        Self::iter().map(|x| x.gltf_path()).collect()
+    }
+
     pub fn scene_handle(&self) -> Handle<Scene> {
         let path = format!("models/enemies/{self}.glb#Scene0");
 
         Handle::weak(HandleId::AssetPathId(path.as_str().into()))
     }
 
+    pub fn gltf_path(&self) -> String {
+        format!("models/enemies/{self}.glb")
+    }
+
     pub fn gltf_handle(&self) -> Handle<Gltf> {
-        let path = format!("models/enemies/{self}.glb");
+        let path = self.gltf_path();
 
         Handle::weak(HandleId::AssetPathId(path.as_str().into()))
     }
