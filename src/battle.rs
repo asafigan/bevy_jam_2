@@ -516,7 +516,7 @@ impl Prefab for BattlePrefab {
             BoardPrefab {
                 layers: BOARD_LAYER,
                 gems: BoardPrefab::random_gems(),
-                transform: Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::splat(0.5)),
+                transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::splat(0.5)),
             },
             commands,
         );
@@ -524,7 +524,7 @@ impl Prefab for BattlePrefab {
         let health_bar = spawn(
             ProgressBarPrefab {
                 starting_percentage: 1.0,
-                transform: Transform::from_xyz(0.0, -3.0, 1.0).with_scale([6.0, 0.4, 1.0].into()),
+                transform: Transform::from_xyz(0.0, -2.9, 1.0).with_scale([6.0, 0.3, 1.0].into()),
             },
             commands,
         );
@@ -571,8 +571,8 @@ impl Prefab for BattlePrefab {
                     is_active: false,
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, 4.0, 10.0)
-                    .looking_at([0.0, 0.0, 3.0].into(), Vec3::Y),
+                transform: Transform::from_xyz(0.0, 5.0, 13.0)
+                    .looking_at([0.0, 0.0, 5.0].into(), Vec3::Y),
                 ..default()
             })
             .insert(BattleCamera)

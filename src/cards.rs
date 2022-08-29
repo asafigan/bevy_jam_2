@@ -19,6 +19,7 @@ impl Plugin for CardPlugin {
         app.add_loopless_state(CardsState::None)
             .add_system(put_cards_in_pile)
             .add_system(put_cards_in_hand)
+            .add_system(hover_active_card.run_not_in_state(CardsState::None))
             .add_enter_system(CardsState::Draw, draw)
             .add_system_set(
                 ConditionSet::new()
@@ -60,19 +61,27 @@ pub enum CardsState {
 }
 
 fn put_cards_in_hand(
-    hands: Query<(&Hand, &Transform), Changed<Hand>>,
+    hands: Query<(&Hand, &Transform, &WorldHover), (Changed<Hand>, Changed<WorldHover>)>,
     mut cards: Query<&mut Transform, Without<Hand>>,
 ) {
     let space = 500.0;
     let hover_offset = Vec3::new(0.0, 100.0, 10.0);
     let selected_offset = Vec3::new(0.0, 200.0, 0.0);
 
-    for (hand, hand_transform) in &hands {
+    for (hand, hand_transform, hover) in &hands {
         let offset = (hand.cards.len() / 2) as f32 * space;
         let mut iter = cards.iter_many_mut(&hand.cards);
+
+        let root = *hand_transform
+            * if hover.is_cursor_in {
+                Transform::from_xyz(0.0, 400.0, 0.0)
+            } else {
+                default()
+            };
+
         let mut i = 0.0;
         while let Some(mut transform) = iter.fetch_next() {
-            *transform = *hand_transform * Transform::from_xyz(i * space - offset, 0.0, i + 10.0);
+            *transform = root * Transform::from_xyz(i * space - offset, 0.0, i + 10.0);
             i += 1.0;
         }
 
@@ -198,8 +207,23 @@ fn merge(
         &mut commands,
     );
 
+    commands.entity(card).insert(ActiveCard);
+
     player.active_spell = Some(new_spell);
     commands.entity(entity).add_child(card);
+}
+
+#[derive(Component)]
+struct ActiveCard;
+
+fn hover_active_card(mut cards: Query<(&mut Transform, &WorldHover), With<ActiveCard>>) {
+    for (mut transform, hover) in &mut cards {
+        *transform = if hover.is_cursor_in {
+            Transform::from_xyz(0.0, 500.0, 0.0)
+        } else {
+            default()
+        };
+    }
 }
 
 fn discard(mut discard_piles: Query<&mut Pile, With<DiscardPile>>, mut hands: Query<&mut Hand>) {
@@ -265,9 +289,10 @@ impl Prefab for CardsPrefab {
             .push_children(&cards)
             .with_children(|c| {
                 c.spawn_bundle(SpatialBundle {
-                    transform: Transform::from_xyz(0.0, -1500.0, 20.0),
+                    transform: Transform::from_xyz(0.0, -1900.0, 20.0),
                     ..default()
                 })
+                .insert(WorldHover::new([4000.0, 2500.0].into()))
                 .insert(Hand::default());
 
                 c.spawn_bundle(SpatialBundle {
