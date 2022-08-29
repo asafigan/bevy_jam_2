@@ -484,7 +484,7 @@ fn player_attack(
         .map(|x| x.tiles.len() as u32)
         .sum();
 
-    player.current_health = player.max_health.min(player.current_health + heal * 5);
+    player.current_health = player.max_health.min(player.current_health + heal * 3);
 }
 
 fn end_player_turn(mut commands: Commands, enemies: Query<(&EnemyAnimator, &EnemyAnimations)>) {

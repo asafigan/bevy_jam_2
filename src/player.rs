@@ -19,10 +19,10 @@ impl Default for Player {
             spells: vec![
                 Spell::FIRE,
                 Spell::FIRE,
-                Spell::SPLASH,
-                Spell::SPLASH,
-                Spell::WHIP,
-                Spell::WHIP,
+                Spell::WAVE,
+                Spell::WAVE,
+                Spell::THORNS,
+                Spell::THORNS,
                 Spell::RAY,
                 Spell::CURSE,
             ],
@@ -45,14 +45,14 @@ impl Spell {
         attack: 2,
     };
 
-    const SPLASH: Self = Spell {
-        name: Cow::Borrowed("Splash"),
+    const WAVE: Self = Spell {
+        name: Cow::Borrowed("Wave"),
         elements: Cow::Borrowed(&[Element::Water]),
         attack: 2,
     };
 
-    const WHIP: Self = Spell {
-        name: Cow::Borrowed("Whip"),
+    const THORNS: Self = Spell {
+        name: Cow::Borrowed("Thorns"),
         elements: Cow::Borrowed(&[Element::Grass]),
         attack: 2,
     };
@@ -74,6 +74,17 @@ impl Spell {
             name: Cow::Borrowed(""),
             elements: default(),
             attack: 0,
+        }
+    }
+
+    pub fn name_modifier(&self) -> &'static str {
+        match self.elements.first().unwrap() {
+            Element::Heal => "Healing",
+            Element::Dark => "Cursed",
+            Element::Water => "Frost",
+            Element::Fire => "Blaze",
+            Element::Grass => "Overgrown",
+            Element::Light => "Blinding",
         }
     }
 }

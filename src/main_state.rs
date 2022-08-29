@@ -75,7 +75,7 @@ struct Difficulty {
 impl Default for Difficulty {
     fn default() -> Self {
         Self {
-            enemy_health: 20,
+            enemy_health: 40,
             enemy_attack: 10,
         }
     }

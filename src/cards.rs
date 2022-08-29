@@ -189,14 +189,24 @@ fn merge(
 
     let mut new_spell = Spell::empty();
 
-    for entity in hand.selected_cards.drain() {
-        let spell = cards.get(entity).unwrap();
+    let mut spells = hand.selected_cards.drain();
 
-        new_spell.attack += spell.attack;
-        new_spell.name = (new_spell.name.to_string() + " " + spell.name.as_ref()).into();
-        match &mut new_spell.elements {
-            std::borrow::Cow::Borrowed(_) => todo!(),
-            std::borrow::Cow::Owned(vec) => vec.extend_from_slice(&spell.elements),
+    let a = cards.get(spells.next().unwrap()).unwrap();
+    let b = cards.get(spells.next().unwrap()).unwrap();
+
+    new_spell.attack = a.attack + b.attack;
+
+    if a.name == b.name {
+        new_spell.name = ("Big ".to_string() + a.name.as_ref()).into();
+    } else {
+        new_spell.name = (a.name_modifier().to_string() + " " + b.name.as_ref()).into();
+    }
+
+    match &mut new_spell.elements {
+        std::borrow::Cow::Borrowed(_) => todo!(),
+        std::borrow::Cow::Owned(vec) => {
+            vec.extend_from_slice(&a.elements);
+            vec.extend_from_slice(&b.elements);
         }
     }
 
@@ -323,7 +333,7 @@ impl Prefab for CardPrefab {
         const SCALE: f32 = 4.0;
         let style = TextStyle {
             font: self.font.clone(),
-            font_size: 40.0 * SCALE,
+            font_size: 22.0 * SCALE,
             color: Color::BLACK,
         };
 
