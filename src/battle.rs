@@ -32,6 +32,9 @@ impl Plugin for BattlePlugin {
     fn build(&self, app: &mut App) {
         app.add_loopless_state(BattleState::None)
             .add_event::<BattleCleanedUp>()
+            .insert_resource(BattleResources {
+                root_entities: vec![],
+            })
             .add_startup_system(load_enemy_models)
             .add_system(play_idle_animation)
             .add_system(find_enemy_animations)
@@ -626,6 +629,8 @@ struct PlayerHealthBar;
 struct BattleCamera;
 
 pub struct BattlePrefab {
+    pub round: u32,
+    pub num_rounds: u32,
     pub enemy: EnemyPrefab,
     pub environment: Handle<Scene>,
     pub spells: Vec<Spell>,
@@ -719,6 +724,22 @@ impl Prefab for BattlePrefab {
             },
             commands,
         );
+
+        commands.entity(cards).with_children(|c| {
+            c.spawn_bundle(Text2dBundle {
+                text: Text::from_section(
+                    format!("Round {} / {}", self.round, self.num_rounds),
+                    TextStyle {
+                        font: self.font.clone(),
+                        font_size: 200.0,
+                        color: Color::WHITE,
+                    },
+                )
+                .with_alignment(TextAlignment::TOP_LEFT),
+                transform: Transform::from_xyz(-1500.0, 2000.0, 0.0),
+                ..default()
+            });
+        });
 
         let environment_camera = commands
             .spawn_bundle(Camera3dBundle {

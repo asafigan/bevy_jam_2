@@ -41,6 +41,13 @@ impl Plugin for MainStatePlugin {
                     .with_system(go_to_restart)
                     .into(),
             )
+            .add_enter_system(MainState::Win, show_win_screen)
+            .add_system_set(
+                ConditionSet::new()
+                    .run_in_state(MainState::Win)
+                    .with_system(go_to_restart)
+                    .into(),
+            )
             .add_enter_system(MainState::Restart, fade_screen)
             .add_system_set(
                 ConditionSet::new()
@@ -49,6 +56,7 @@ impl Plugin for MainStatePlugin {
                     .with_system(reset_player.run_on_event::<TransitionEnd>())
                     .with_system(reset_difficulty.run_on_event::<TransitionEnd>())
                     .with_system(clean_up_death_screen.run_on_event::<TransitionEnd>())
+                    .with_system(clean_up_win_screen.run_on_event::<TransitionEnd>())
                     .with_system(Transition::clean_up_system.run_on_event::<BattleCleanedUp>())
                     .with_system(go_to_map.run_on_event::<BattleCleanedUp>())
                     .into(),
@@ -61,6 +69,7 @@ pub enum MainState {
     Map,
     Battle,
     Death,
+    Win,
     Restart,
 }
 
@@ -68,6 +77,7 @@ pub enum MainState {
 struct Restart;
 
 struct Difficulty {
+    round: u32,
     enemy_health: u32,
     enemy_attack: u32,
 }
@@ -75,6 +85,7 @@ struct Difficulty {
 impl Default for Difficulty {
     fn default() -> Self {
         Self {
+            round: 1,
             enemy_health: 40,
             enemy_attack: 10,
         }
@@ -89,6 +100,8 @@ fn start_battle(
 ) {
     spawn(
         BattlePrefab {
+            round: difficulty.round,
+            num_rounds: 8,
             environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
             enemy: EnemyPrefab {
                 kind: EnemyKind::random(),
@@ -105,6 +118,8 @@ fn start_battle(
     difficulty.enemy_health = (difficulty.enemy_health as f32 * 1.2) as u32;
     difficulty.enemy_attack += 2;
 
+    difficulty.round += 1;
+
     commands.insert_resource(NextState(MainState::Battle));
     commands.insert_resource(NextState(BattleState::Intro));
 }
@@ -117,8 +132,12 @@ fn die(player: Res<Player>, mut commands: Commands) {
     }
 }
 
-fn go_to_map(mut commands: Commands) {
-    commands.insert_resource(NextState(MainState::Map))
+fn go_to_map(mut commands: Commands, difficulty: Res<Difficulty>) {
+    if difficulty.round > 8 {
+        commands.insert_resource(NextState(MainState::Win))
+    } else {
+        commands.insert_resource(NextState(MainState::Map))
+    }
 }
 
 #[derive(Component)]
@@ -151,6 +170,56 @@ fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn clean_up_death_screen(screens: Query<Entity, With<DeathScreen>>, mut commands: Commands) {
+    for entity in &screens {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+#[derive(Component)]
+struct WinScreen;
+
+fn show_win_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("fonts/FiraMono-Medium.ttf");
+    let death_screen = spawn(
+        FullScreen {
+            color: Color::Rgba {
+                red: 0.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0,
+            },
+            child: VBox {
+                children: vec![
+                    TextPrefab {
+                        text: "You Won!".into(),
+                        size: 80.0,
+                        color: Color::WHITE,
+                        font: font.clone(),
+                    }
+                    .into(),
+                    ButtonPrefab {
+                        on_click: Restart,
+                        child: TextPrefab {
+                            text: "Restart".into(),
+                            size: 40.0,
+                            color: Color::BLACK,
+                            font,
+                        },
+                    }
+                    .into(),
+                ],
+            },
+        },
+        &mut commands,
+    );
+
+    commands.entity(death_screen).insert(WinScreen);
+    commands
+        .spawn_bundle(Camera3dBundle::default())
+        .insert(WinScreen);
+}
+
+fn clean_up_win_screen(screens: Query<Entity, With<WinScreen>>, mut commands: Commands) {
     for entity in &screens {
         commands.entity(entity).despawn_recursive();
     }
