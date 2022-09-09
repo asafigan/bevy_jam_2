@@ -63,6 +63,7 @@ impl Prefab for TextPrefab {
 }
 
 pub struct VBox {
+    pub gap: f32,
     pub children: Vec<Child>,
 }
 
@@ -83,8 +84,25 @@ impl Prefab for VBox {
                 ..Default::default()
             })
             .with_children(|p| {
-                for child in self.children {
+                let mut children = self.children.into_iter();
+                if let Some(child) = children.next() {
                     child.construct_inner(&mut p.spawn());
+                }
+                for child in children {
+                    p.spawn_bundle(NodeBundle {
+                        style: Style {
+                            padding: UiRect {
+                                top: Val::Px(self.gap),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                        color: Color::NONE.into(),
+                        ..Default::default()
+                    })
+                    .with_children(|p| {
+                        child.construct_inner(&mut p.spawn());
+                    });
                 }
             });
     }

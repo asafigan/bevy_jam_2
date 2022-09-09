@@ -207,6 +207,7 @@ fn show_win_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                 alpha: 1.0,
             },
             child: VBox {
+                gap: 30.0,
                 children: vec![
                     TextPrefab {
                         text: "You Won!".into(),
