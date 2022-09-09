@@ -1,34 +1,73 @@
 use bevy::prelude::*;
 
+pub use bevy::ecs::system::EntityCommands;
+
 pub trait Prefab: Send + Sync + 'static {
-    fn construct(&self, entity: Entity, commands: &mut Commands);
+    fn construct(self, entity: &mut EntityCommands);
 }
 
-pub fn spawn<T: Prefab + Sized>(prefab: T, commands: &mut Commands) -> Entity {
-    let entity = commands.spawn().id();
-    prefab.construct(entity, commands);
-
-    entity
+pub trait SpawnPrefabExt<'w, 's> {
+    fn spawn_prefab<'a>(&'a mut self, prefab: impl Prefab) -> EntityCommands<'w, 's, 'a>;
 }
-pub struct Child(Box<dyn Prefab>);
+
+impl<'w, 's> SpawnPrefabExt<'w, 's> for Commands<'w, 's> {
+    fn spawn_prefab<'a>(&'a mut self, prefab: impl Prefab) -> EntityCommands<'w, 's, 'a> {
+        let mut entity = self.spawn();
+        prefab.construct(&mut entity);
+        entity
+    }
+}
+
+impl<'w, 's, 'b> SpawnPrefabExt<'w, 's> for ChildBuilder<'w, 's, 'b> {
+    fn spawn_prefab<'a>(&'a mut self, prefab: impl Prefab) -> EntityCommands<'w, 's, 'a> {
+        let mut entity = self.spawn();
+        prefab.construct(&mut entity);
+        entity
+    }
+}
+
+pub trait ConstructPrefabExt<'w, 's, 'a> {
+    fn construct_prefab(&mut self, prefab: impl Prefab) -> &mut EntityCommands<'w, 's, 'a>;
+}
+
+impl<'w, 's, 'a> ConstructPrefabExt<'w, 's, 'a> for EntityCommands<'w, 's, 'a> {
+    fn construct_prefab(&mut self, prefab: impl Prefab) -> &mut EntityCommands<'w, 's, 'a> {
+        prefab.construct(self);
+        self
+    }
+}
+
+pub struct Child(Box<dyn ChildPrefab>);
 
 impl<T> From<T> for Child
 where
     T: Prefab,
 {
     fn from(element: T) -> Self {
-        Child(Box::new(element))
+        Child(Box::new(InnerChild(Some(element))))
     }
 }
 
 impl Child {
-    pub fn construct(&self, entity: Entity, commands: &mut Commands) -> Entity {
-        let child = commands.spawn().id();
+    pub fn construct_inner(mut self, entity: &mut EntityCommands) {
+        // This will not panic because Child is moved so it can only be called once.
+        // Also, it is always constructed with a valid inner child.
+        self.0.construct_once(entity);
+    }
+}
 
-        self.0.construct(child, commands);
+trait ChildPrefab: Send + Sync + 'static {
+    fn construct_once(&mut self, entity: &mut EntityCommands);
+}
 
-        commands.entity(entity).add_child(child);
+pub struct InnerChild<T>(Option<T>);
 
-        child
+// This implementation can only be called once
+impl<T> ChildPrefab for InnerChild<T>
+where
+    T: Prefab,
+{
+    fn construct_once(&mut self, entity: &mut EntityCommands) {
+        self.0.take().unwrap().construct(entity)
     }
 }

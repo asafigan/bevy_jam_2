@@ -9,11 +9,8 @@ pub struct FullScreen<T> {
 }
 
 impl<T: Prefab> Prefab for FullScreen<T> {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let child = commands.spawn().id();
-
-        commands
-            .entity(entity)
+    fn construct(self, entity: &mut EntityCommands) {
+        entity
             .insert_bundle(NodeBundle {
                 style: Style {
                     size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
@@ -26,9 +23,9 @@ impl<T: Prefab> Prefab for FullScreen<T> {
                 color: self.color.into(),
                 ..Default::default()
             })
-            .add_child(child);
-
-        self.child.construct(child, commands);
+            .with_children(|p| {
+                p.spawn_prefab(self.child);
+            });
     }
 }
 
@@ -41,8 +38,8 @@ pub struct TextPrefab {
 }
 
 impl Prefab for TextPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        commands.entity(entity).insert_bundle(TextBundle {
+    fn construct(self, entity: &mut EntityCommands) {
+        entity.insert_bundle(TextBundle {
             style: Style {
                 size: Size::new(Val::Undefined, Val::Px(self.size)),
                 margin: UiRect {
@@ -70,24 +67,26 @@ pub struct VBox {
 }
 
 impl Prefab for VBox {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        commands.entity(entity).insert_bundle(NodeBundle {
-            style: Style {
-                size: Size {
-                    width: Val::Percent(100.0),
-                    height: Val::Auto,
+    fn construct(self, entity: &mut EntityCommands) {
+        entity
+            .insert_bundle(NodeBundle {
+                style: Style {
+                    size: Size {
+                        width: Val::Percent(100.0),
+                        height: Val::Auto,
+                    },
+                    flex_direction: FlexDirection::ColumnReverse,
+                    align_items: AlignItems::Center,
+                    ..Default::default()
                 },
-                flex_direction: FlexDirection::ColumnReverse,
-                align_items: AlignItems::Center,
+                color: Color::NONE.into(),
                 ..Default::default()
-            },
-            color: Color::NONE.into(),
-            ..Default::default()
-        });
-
-        for child in &self.children {
-            child.construct(entity, commands);
-        }
+            })
+            .with_children(|p| {
+                for child in self.children {
+                    child.construct_inner(&mut p.spawn());
+                }
+            });
     }
 }
 
@@ -101,19 +100,16 @@ where
     C: Clone + Send + Sync + 'static,
     T: Prefab,
 {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let child = commands.spawn().id();
-
-        commands
-            .entity(entity)
+    fn construct(self, entity: &mut EntityCommands) {
+        entity
             .insert_bundle(ButtonBundle {
                 color: Color::WHITE.into(),
                 ..Default::default()
             })
             .insert(OnClick(self.on_click.clone()))
-            .add_child(child);
-
-        self.child.construct(child, commands);
+            .with_children(|p| {
+                p.spawn_prefab(self.child);
+            });
     }
 }
 

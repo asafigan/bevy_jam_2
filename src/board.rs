@@ -527,13 +527,12 @@ fn move_falling_gems(
                     0.0,
                 );
                 (
-                    spawn(
-                        GemPrefab {
+                    commands
+                        .spawn_prefab(GemPrefab {
                             element: Element::random(),
                             transform: Transform::from_translation(translation),
-                        },
-                        &mut commands,
-                    ),
+                        })
+                        .id(),
                     translation,
                 )
             }
@@ -662,9 +661,9 @@ impl GemPrefab {
 }
 
 impl Prefab for GemPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mesh = commands
-            .spawn_bundle(PbrBundle {
+    fn construct(self, entity: &mut EntityCommands) {
+        let mesh = entity.add_children(|p| {
+            p.spawn_bundle(PbrBundle {
                 material: self.material_handle(),
                 mesh: Self::mesh_handle(),
                 transform: Transform::from_translation([0.0, 0.0, 1.0].into())
@@ -674,10 +673,10 @@ impl Prefab for GemPrefab {
             // bevy bug: lights don't respect layers and lights cast shadows on all layers
             .insert(NotShadowCaster)
             .insert(NotShadowReceiver)
-            .id();
+            .id()
+        });
 
-        commands
-            .entity(entity)
+        entity
             .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
@@ -686,8 +685,7 @@ impl Prefab for GemPrefab {
                 mesh,
                 element: self.element,
                 holding: false,
-            })
-            .add_child(mesh);
+            });
     }
 }
 
@@ -718,43 +716,36 @@ impl BoardPrefab {
 const BOARD_MIDDLE: Vec3 = Vec3::new(6.0 / 2.0, 5.0 / 2.0, 0.0);
 
 impl Prefab for BoardPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mut children = Vec::new();
-
+    fn construct(self, entity: &mut EntityCommands) {
         let middle = BOARD_MIDDLE;
 
         let mut tiles: Vec<[Entity; 5]> = Vec::new();
-        for x in 0..6 {
-            let mut column = Vec::new();
-            for y in 0..5 {
-                let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
-                let transform = Transform::from_translation(offset - middle);
-                let gem = spawn(
-                    GemPrefab {
-                        element: self.gems[x][y],
-                        transform,
-                    },
-                    commands,
-                );
+        entity.with_children(|p| {
+            for x in 0..6 {
+                let mut column = Vec::new();
+                for y in 0..5 {
+                    let offset = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
+                    let transform = Transform::from_translation(offset - middle);
+                    let gem = p
+                        .spawn_prefab(GemPrefab {
+                            element: self.gems[x][y],
+                            transform,
+                        })
+                        .id();
 
-                let tile = spawn(TilePrefab { gem, transform }, commands);
+                    let tile = p.spawn_prefab(TilePrefab { gem, transform }).id();
 
-                children.push(gem);
-                children.push(tile);
+                    column.push(tile);
+                }
 
-                column.push(tile);
+                tiles.push(column.try_into().unwrap());
             }
 
-            tiles.push(column.try_into().unwrap());
-        }
-
-        children.push(spawn(
-            TimerPrefab {
+            p.spawn_prefab(TimerPrefab {
                 size: [BOARD_MIDDLE.x * 2.0, 0.25].into(),
                 transform: Transform::from_xyz(0.0, BOARD_MIDDLE.y + 0.2, 0.0),
-            },
-            commands,
-        ));
+            });
+        });
 
         // bevy bug: can only have one directional light per world
         // bevy bug: shadows for layer 0 only
@@ -771,8 +762,7 @@ impl Prefab for BoardPrefab {
         //     })
         //     .id();
 
-        commands
-            .entity(entity)
+        entity
             .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
@@ -780,9 +770,8 @@ impl Prefab for BoardPrefab {
             .insert(Board {
                 tiles: tiles.try_into().unwrap(),
             })
-            .insert(self.layers)
-            // .add_child(light)
-            .push_children(&children);
+            .insert(self.layers);
+        // .add_child(light);
     }
 }
 
@@ -798,8 +787,9 @@ struct TilePrefab {
 }
 
 impl Prefab for TilePrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mesh = commands
+    fn construct(self, entity: &mut EntityCommands) {
+        let mesh = entity
+            .commands()
             .spawn_bundle(PbrBundle {
                 mesh: square_mesh(),
                 material: white_standard_material(),
@@ -810,8 +800,7 @@ impl Prefab for TilePrefab {
             .insert(NotShadowReceiver)
             .id();
 
-        commands
-            .entity(entity)
+        entity
             .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
@@ -834,18 +823,17 @@ struct TimerPrefab {
 }
 
 impl Prefab for TimerPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        ProgressBarPrefab {
-            size: self.size,
-            starting_percentage: 1.0,
-            transform: self.transform,
-            background_color: Color::NONE,
-            border_color: Color::NONE,
-            position: ProgressBarPosition::Center,
-            ..default()
-        }
-        .construct(entity, commands);
-
-        commands.entity(entity).insert(TimerProgress);
+    fn construct(self, entity: &mut EntityCommands) {
+        entity
+            .construct_prefab(ProgressBarPrefab {
+                size: self.size,
+                starting_percentage: 1.0,
+                transform: self.transform,
+                background_color: Color::NONE,
+                border_color: Color::NONE,
+                position: ProgressBarPosition::Center,
+                ..default()
+            })
+            .insert(TimerProgress);
     }
 }

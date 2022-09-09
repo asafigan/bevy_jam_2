@@ -8,7 +8,7 @@ use bevy::{
 use bevy_tweening::{lens::ColorMaterialColorLens, *};
 use std::time::Duration;
 
-use crate::prefab::Prefab;
+use crate::prefab::*;
 
 pub struct TransitionPlugin;
 
@@ -85,31 +85,35 @@ pub struct FadeScreenPrefab {
 const TRANSITION_LAYER: RenderLayers = RenderLayers::layer(RenderLayers::TOTAL_LAYERS as u8 - 1);
 
 impl Prefab for FadeScreenPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let camera = commands
-            .spawn_bundle(Camera2dBundle {
-                camera: Camera {
-                    priority: isize::MAX,
-                    ..default()
-                },
-                camera_2d: Camera2d {
-                    clear_color: ClearColorConfig::None,
-                },
-                ..default()
-            })
-            .insert(UiCameraConfig { show_ui: false })
-            .id();
+    fn construct(self, entity: &mut EntityCommands) {
+        let id = entity.id();
 
-        let duration = self.duration;
-        let delay = self.delay;
-        let direction = self.direction;
-        let color = self.color;
-        commands.add(move |world: &mut World| {
+        entity
+            .insert_bundle(SpatialBundle::default())
+            .insert(Transition {
+                timer: Timer::new(self.duration + self.delay, false),
+            })
+            .insert(TRANSITION_LAYER)
+            .with_children(|p| {
+                p.spawn_bundle(Camera2dBundle {
+                    camera: Camera {
+                        priority: isize::MAX,
+                        ..default()
+                    },
+                    camera_2d: Camera2d {
+                        clear_color: ClearColorConfig::None,
+                    },
+                    ..default()
+                })
+                .insert(UiCameraConfig { show_ui: false });
+            });
+
+        entity.commands().add(move |world: &mut World| {
             let mut materials = world.resource_mut::<Assets<ColorMaterial>>();
 
-            let (start, end) = match direction {
-                TransitionDirection::In => (color, Color::NONE),
-                TransitionDirection::Out => (Color::NONE, color),
+            let (start, end) = match self.direction {
+                TransitionDirection::In => (self.color, Color::NONE),
+                TransitionDirection::Out => (Color::NONE, self.color),
             };
 
             let material_handle = materials.add(ColorMaterial {
@@ -127,26 +131,17 @@ impl Prefab for FadeScreenPrefab {
                 })
                 .insert(AssetAnimator::new(
                     material_handle,
-                    Delay::new(delay).then(Tween::new(
+                    Delay::new(self.delay).then(Tween::new(
                         EaseFunction::QuarticOut,
                         TweeningType::Once,
-                        duration,
+                        self.duration,
                         ColorMaterialColorLens { start, end },
                     )),
                 ))
                 .id();
 
-            world.entity_mut(entity).push_children(&[overlay]);
+            world.entity_mut(id).push_children(&[overlay]);
         });
-
-        commands
-            .entity(entity)
-            .insert_bundle(SpatialBundle::default())
-            .insert(Transition {
-                timer: Timer::new(self.duration + self.delay, false),
-            })
-            .insert(TRANSITION_LAYER)
-            .add_child(camera);
     }
 }
 

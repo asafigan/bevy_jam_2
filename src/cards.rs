@@ -8,7 +8,7 @@ use iyes_loopless::prelude::*;
 
 use crate::{
     player::{Player, Spell},
-    prefab::{spawn, Prefab},
+    prefab::*,
     utils::{blue_color_material, go_to, square_mesh, white_color_material, WorldHover},
 };
 
@@ -210,18 +210,14 @@ fn merge(
         }
     }
 
-    let card = spawn(
-        CardPrefab {
+    player.active_spell = Some(new_spell.clone());
+    commands.entity(entity).with_children(|p| {
+        p.spawn_prefab(CardPrefab {
             font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-            spell: new_spell.clone(),
-        },
-        &mut commands,
-    );
-
-    commands.entity(card).insert(ActiveCard);
-
-    player.active_spell = Some(new_spell);
-    commands.entity(entity).add_child(card);
+            spell: new_spell,
+        })
+        .insert(ActiveCard);
+    });
 }
 
 #[derive(Component)]
@@ -272,48 +268,44 @@ pub struct CardsPrefab {
 }
 
 impl Prefab for CardsPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let mut cards: Vec<Entity> = self
-            .spells
-            .iter()
-            .cloned()
-            .map(|spell| {
-                spawn(
-                    CardPrefab {
-                        spell,
-                        font: self.font.clone(),
-                    },
-                    commands,
-                )
-            })
-            .collect();
-
-        fastrand::shuffle(&mut cards);
-
-        commands
-            .entity(entity)
+    fn construct(self, entity: &mut EntityCommands) {
+        entity
             .insert_bundle(SpatialBundle {
                 transform: self.transform,
                 ..default()
             })
             .insert(self.layer)
-            .push_children(&cards)
-            .with_children(|c| {
-                c.spawn_bundle(SpatialBundle {
+            .with_children(|p| {
+                let mut cards: Vec<Entity> = self
+                    .spells
+                    .iter()
+                    .cloned()
+                    .map(|spell| {
+                        p.spawn_prefab(CardPrefab {
+                            spell,
+                            font: self.font.clone(),
+                        })
+                        .id()
+                    })
+                    .collect();
+
+                fastrand::shuffle(&mut cards);
+
+                p.spawn_bundle(SpatialBundle {
                     transform: Transform::from_xyz(0.0, -1900.0, 20.0),
                     ..default()
                 })
                 .insert(WorldHover::new([4000.0, 2500.0].into()))
                 .insert(Hand::default());
 
-                c.spawn_bundle(SpatialBundle {
+                p.spawn_bundle(SpatialBundle {
                     transform: Transform::from_xyz(1600.0, -2000.0, 15.0),
                     ..default()
                 })
                 .insert(Pile::default())
                 .insert(DiscardPile);
 
-                c.spawn_bundle(SpatialBundle {
+                p.spawn_bundle(SpatialBundle {
                     transform: Transform::from_xyz(-1600.0, -2000.0, 15.0),
                     ..default()
                 })
@@ -329,7 +321,7 @@ pub struct CardPrefab {
 }
 
 impl Prefab for CardPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
+    fn construct(self, entity: &mut EntityCommands) {
         const SCALE: f32 = 4.0;
         let style = TextStyle {
             font: self.font.clone(),
@@ -345,8 +337,7 @@ impl Prefab for CardPrefab {
         let width = 175.0 * SCALE;
         let height = 250.0 * SCALE;
 
-        commands
-            .entity(entity)
+        entity
             .insert_bundle(SpatialBundle::default())
             .insert(WorldHover::new([width, height].into()).extend_bottom_bounds(1000.0))
             .insert(self.spell.clone())

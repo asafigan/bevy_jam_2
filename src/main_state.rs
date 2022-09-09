@@ -7,7 +7,7 @@ use crate::{
     battle::{BattleCleanedUp, BattlePrefab, BattleResources, BattleState, EnemyKind, EnemyPrefab},
     cards::CardsState,
     player::Player,
-    prefab::spawn,
+    prefab::*,
     transitions::{FadeScreenPrefab, Transition, TransitionDirection, TransitionEnd},
     ui::*,
     utils::Loading,
@@ -121,22 +121,19 @@ fn start_battle(
     player: Res<Player>,
     asset_server: Res<AssetServer>,
 ) {
-    spawn(
-        BattlePrefab {
-            round: difficulty.round,
-            num_rounds: 8,
-            environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
-            enemy: EnemyPrefab {
-                kind: EnemyKind::random(),
-                max_health: difficulty.enemy_health,
-                attack: difficulty.enemy_attack,
-                transform: default(),
-            },
-            spells: player.spells.clone(),
-            font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+    commands.spawn_prefab(BattlePrefab {
+        round: difficulty.round,
+        num_rounds: 8,
+        environment: asset_server.load("scenes/battles/super_basic.glb#Scene0"),
+        enemy: EnemyPrefab {
+            kind: EnemyKind::random(),
+            max_health: difficulty.enemy_health,
+            attack: difficulty.enemy_attack,
+            transform: default(),
         },
-        &mut commands,
-    );
+        spells: player.spells.clone(),
+        font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+    });
 
     difficulty.enemy_health = (difficulty.enemy_health as f32 * 1.2) as u32;
     difficulty.enemy_attack += 2;
@@ -168,8 +165,9 @@ struct DeathScreen;
 
 fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraMono-Medium.ttf");
-    let death_screen = spawn(
-        FullScreen {
+
+    commands
+        .spawn_prefab(FullScreen {
             color: Color::Rgba {
                 red: 0.0,
                 green: 0.0,
@@ -185,11 +183,8 @@ fn show_death_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                     font,
                 },
             },
-        },
-        &mut commands,
-    );
-
-    commands.entity(death_screen).insert(DeathScreen);
+        })
+        .insert(DeathScreen);
 }
 
 fn clean_up_death_screen(screens: Query<Entity, With<DeathScreen>>, mut commands: Commands) {
@@ -203,8 +198,8 @@ struct WinScreen;
 
 fn show_win_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraMono-Medium.ttf");
-    let death_screen = spawn(
-        FullScreen {
+    commands
+        .spawn_prefab(FullScreen {
             color: Color::Rgba {
                 red: 0.0,
                 green: 0.0,
@@ -232,11 +227,9 @@ fn show_win_screen(mut commands: Commands, asset_server: Res<AssetServer>) {
                     .into(),
                 ],
             },
-        },
-        &mut commands,
-    );
+        })
+        .insert(WinScreen);
 
-    commands.entity(death_screen).insert(WinScreen);
     commands
         .spawn_bundle(Camera3dBundle::default())
         .insert(WinScreen);
@@ -265,15 +258,12 @@ fn clean_up_battle(
 }
 
 fn fade_screen(mut commands: Commands) {
-    spawn(
-        FadeScreenPrefab {
-            direction: TransitionDirection::Out,
-            color: Color::BLACK,
-            delay: default(),
-            duration: Duration::from_secs(1),
-        },
-        &mut commands,
-    );
+    commands.spawn_prefab(FadeScreenPrefab {
+        direction: TransitionDirection::Out,
+        color: Color::BLACK,
+        delay: default(),
+        duration: Duration::from_secs(1),
+    });
 }
 
 fn reset_player(mut player: ResMut<Player>) {

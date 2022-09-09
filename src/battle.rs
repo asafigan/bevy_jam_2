@@ -21,7 +21,7 @@ use crate::{
     cards::{CardsPrefab, CardsState},
     particles::ParticleEmitter,
     player::{Player, Spell},
-    prefab::{spawn, Prefab},
+    prefab::*,
     transitions::{FadeScreenPrefab, TransitionDirection, TransitionEnd},
     utils::{
         go_to, DelayedDespawn, DespawnReason, Loading, ProgressBar, ProgressBarPrefab, WorldCursor,
@@ -282,15 +282,12 @@ fn intro(
             *started = false;
         }
     } else {
-        spawn(
-            FadeScreenPrefab {
-                direction: TransitionDirection::In,
-                color: Color::BLACK,
-                delay: default(),
-                duration: Duration::from_secs(1),
-            },
-            &mut commands,
-        );
+        commands.spawn_prefab(FadeScreenPrefab {
+            direction: TransitionDirection::In,
+            color: Color::BLACK,
+            delay: default(),
+            duration: Duration::from_secs(1),
+        });
 
         for mut camera in &mut cameras {
             camera.is_active = true;
@@ -602,15 +599,16 @@ fn fade_out(
         .iter()
         .any(|x| x.reason() == Some(DespawnReason::DestroyEnemy));
     if !*started && !waiting_for_enemy_death {
-        resources.root_entities.push(spawn(
-            FadeScreenPrefab {
-                delay: Duration::from_secs_f32(0.5),
-                duration: Duration::from_secs(1),
-                direction: TransitionDirection::Out,
-                color: Color::BLACK,
-            },
-            &mut commands,
-        ));
+        resources.root_entities.push(
+            commands
+                .spawn_prefab(FadeScreenPrefab {
+                    delay: Duration::from_secs_f32(0.5),
+                    duration: Duration::from_secs(1),
+                    direction: TransitionDirection::Out,
+                    color: Color::BLACK,
+                })
+                .id(),
+        );
 
         *started = true;
     }
@@ -640,154 +638,151 @@ const BOARD_LAYER: RenderLayers = RenderLayers::layer(1);
 const CARDS_LAYER: RenderLayers = RenderLayers::layer(2);
 
 impl Prefab for BattlePrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let board_camera = commands
-            .spawn_bundle(Camera3dBundle {
-                projection: OrthographicProjection {
-                    scale: 3.0,
-                    scaling_mode: ScalingMode::FixedVertical(2.0),
-                    ..default()
-                }
-                .into(),
-                transform: Transform::from_translation(Vec3::Z * 10.0)
-                    .looking_at(Vec3::ZERO, Vec3::Y),
-                camera_3d: Camera3d {
-                    clear_color: ClearColorConfig::None,
-                    ..default()
-                },
-                camera: Camera {
-                    priority: 1,
-                    is_active: false,
-                    ..default()
-                },
-                ..default()
-            })
-            .insert(WorldCursor::default())
-            .insert(BOARD_LAYER)
-            .insert(BattleCamera)
-            .id();
+    fn construct(self, entity: &mut EntityCommands) {
+        let mut root_entities = vec![entity.id()];
 
-        let board = spawn(
-            BoardPrefab {
-                layers: BOARD_LAYER,
-                gems: BoardPrefab::random_gems(),
-                transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::splat(0.5)),
-            },
-            commands,
-        );
-
-        let health_bar = spawn(
-            ProgressBarPrefab {
-                starting_percentage: 1.0,
-                size: [6.0, 0.3].into(),
-                border: 0.1,
-                transform: Transform::from_xyz(0.0, -2.9, 1.0),
-                color: Color::hex(HEALTH_COLOR_HEX).unwrap(),
-                ..default()
-            },
-            commands,
-        );
-
-        commands.entity(board).add_child(health_bar);
-
-        commands.entity(health_bar).insert(PlayerHealthBar);
-
-        let cards_camera = commands
-            .spawn_bundle(Camera2dBundle {
-                camera_2d: Camera2d {
-                    clear_color: ClearColorConfig::None,
-                },
-                camera: Camera {
-                    priority: 2,
-                    is_active: false,
-                    ..default()
-                },
-                projection: OrthographicProjection {
-                    scaling_mode: ScalingMode::FixedVertical(4000.0),
-                    ..Camera2dBundle::default().projection
-                },
-                ..default()
-            })
-            .insert(BattleCamera)
-            .insert(WorldCursor::default())
-            .insert(CARDS_LAYER)
-            .id();
-
-        let cards = spawn(
-            CardsPrefab {
-                font: self.font.clone(),
-                layer: CARDS_LAYER,
-                transform: default(),
-                spells: self.spells.clone(),
-            },
-            commands,
-        );
-
-        commands.entity(cards).with_children(|c| {
-            c.spawn_bundle(Text2dBundle {
-                text: Text::from_section(
-                    format!("Round {} / {}", self.round, self.num_rounds),
-                    TextStyle {
-                        font: self.font.clone(),
-                        font_size: 200.0,
-                        color: Color::WHITE,
+        root_entities.push(
+            entity
+                .commands()
+                .spawn_bundle(Camera3dBundle {
+                    projection: OrthographicProjection {
+                        scale: 3.0,
+                        scaling_mode: ScalingMode::FixedVertical(2.0),
+                        ..default()
+                    }
+                    .into(),
+                    transform: Transform::from_translation(Vec3::Z * 10.0)
+                        .looking_at(Vec3::ZERO, Vec3::Y),
+                    camera_3d: Camera3d {
+                        clear_color: ClearColorConfig::None,
+                        ..default()
                     },
-                )
-                .with_alignment(TextAlignment::TOP_LEFT),
-                transform: Transform::from_xyz(-1500.0, 2000.0, 0.0),
-                ..default()
-            });
-        });
-
-        let environment_camera = commands
-            .spawn_bundle(Camera3dBundle {
-                camera: Camera {
-                    is_active: false,
+                    camera: Camera {
+                        priority: 1,
+                        is_active: false,
+                        ..default()
+                    },
                     ..default()
-                },
-                transform: Transform::from_xyz(0.0, 5.0, 13.0)
-                    .looking_at([0.0, 0.0, 5.0].into(), Vec3::Y),
-                ..default()
-            })
-            .insert(BattleCamera)
-            .insert(ENVIRONMENT_LAYER)
-            .id();
+                })
+                .insert(WorldCursor::default())
+                .insert(BOARD_LAYER)
+                .insert(BattleCamera)
+                .id(),
+        );
 
-        let enemy = spawn(self.enemy.clone(), commands);
-
-        let light = commands
-            .spawn_bundle(PointLightBundle {
-                point_light: PointLight {
-                    shadows_enabled: true,
-                    range: 50.0,
-                    intensity: 100000.0,
-                    shadow_depth_bias: 0.001,
+        root_entities.push(
+            entity
+                .commands()
+                .spawn_prefab(BoardPrefab {
+                    layers: BOARD_LAYER,
+                    gems: BoardPrefab::random_gems(),
+                    transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::splat(0.5)),
+                })
+                .with_children(|p| {
+                    p.spawn_prefab(ProgressBarPrefab {
+                        starting_percentage: 1.0,
+                        size: [6.0, 0.3].into(),
+                        border: 0.1,
+                        transform: Transform::from_xyz(0.0, -2.9, 1.0),
+                        color: Color::hex(HEALTH_COLOR_HEX).unwrap(),
+                        ..default()
+                    })
+                    .insert(PlayerHealthBar);
+                })
+                .id(),
+        );
+        root_entities.push(
+            entity
+                .commands()
+                .spawn_bundle(Camera2dBundle {
+                    camera_2d: Camera2d {
+                        clear_color: ClearColorConfig::None,
+                    },
+                    camera: Camera {
+                        priority: 2,
+                        is_active: false,
+                        ..default()
+                    },
+                    projection: OrthographicProjection {
+                        scaling_mode: ScalingMode::FixedVertical(4000.0),
+                        ..Camera2dBundle::default().projection
+                    },
                     ..default()
-                },
-                transform: Transform::from_xyz(10.0, 10.0, 10.0).with_rotation(
-                    Quat::from_rotation_x(-45_f32.to_radians())
-                        * Quat::from_rotation_y(-45_f32.to_radians()),
-                ),
-                ..default()
-            })
-            .insert(BattleCamera)
-            .id();
+                })
+                .insert(BattleCamera)
+                .insert(WorldCursor::default())
+                .insert(CARDS_LAYER)
+                .id(),
+        );
 
-        let root = commands
-            .entity(entity)
+        root_entities.push(
+            entity
+                .commands()
+                .spawn_prefab(CardsPrefab {
+                    font: self.font.clone(),
+                    layer: CARDS_LAYER,
+                    transform: default(),
+                    spells: self.spells.clone(),
+                })
+                .with_children(|c| {
+                    c.spawn_bundle(Text2dBundle {
+                        text: Text::from_section(
+                            format!("Round {} / {}", self.round, self.num_rounds),
+                            TextStyle {
+                                font: self.font.clone(),
+                                font_size: 200.0,
+                                color: Color::WHITE,
+                            },
+                        )
+                        .with_alignment(TextAlignment::TOP_LEFT),
+                        transform: Transform::from_xyz(-1500.0, 2000.0, 0.0),
+                        ..default()
+                    });
+                })
+                .id(),
+        );
+
+        entity
             .insert_bundle(SceneBundle {
                 scene: self.environment.clone(),
                 ..default()
             })
             .insert(ENVIRONMENT_LAYER)
-            .add_child(environment_camera)
-            .add_child(light)
-            .add_child(enemy)
-            .id();
+            .with_children(|p| {
+                p.spawn_bundle(Camera3dBundle {
+                    camera: Camera {
+                        is_active: false,
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(0.0, 5.0, 13.0)
+                        .looking_at([0.0, 0.0, 5.0].into(), Vec3::Y),
+                    ..default()
+                })
+                .insert(BattleCamera)
+                .insert(ENVIRONMENT_LAYER);
 
-        commands.insert_resource(BattleResources {
-            root_entities: vec![root, board, board_camera, cards_camera, cards],
-        });
+                p.spawn_prefab(self.enemy);
+
+                p.spawn_bundle(PointLightBundle {
+                    point_light: PointLight {
+                        shadows_enabled: true,
+                        range: 50.0,
+                        intensity: 100000.0,
+                        shadow_depth_bias: 0.001,
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(10.0, 10.0, 10.0).with_rotation(
+                        Quat::from_rotation_x(-45_f32.to_radians())
+                            * Quat::from_rotation_y(-45_f32.to_radians()),
+                    ),
+                    ..default()
+                })
+                .insert(BattleCamera);
+            });
+
+        entity
+            .commands()
+            .insert_resource(BattleResources { root_entities });
     }
 }
 
@@ -802,21 +797,20 @@ pub struct EnemyPrefab {
 const HEALTH_COLOR_HEX: &str = "871e16";
 
 impl Prefab for EnemyPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let health_bar = spawn(
-            ProgressBarPrefab {
+    fn construct(self, entity: &mut EntityCommands) {
+        let health_bar = entity.add_children(|p| {
+            p.spawn_prefab(ProgressBarPrefab {
                 starting_percentage: 1.0,
                 border: 0.1,
                 size: [1.0, 0.2].into(),
                 transform: self.transform * Transform::from_xyz(0.0, 0.2, 1.2),
                 color: Color::hex(HEALTH_COLOR_HEX).unwrap(),
                 ..default()
-            },
-            commands,
-        );
+            })
+            .id()
+        });
 
-        commands
-            .entity(entity)
+        entity
             .insert_bundle(SceneBundle {
                 scene: self.kind.scene_handle(),
                 transform: self.transform,
@@ -828,8 +822,7 @@ impl Prefab for EnemyPrefab {
                 current_health: self.max_health,
                 attack: self.attack,
                 health_bar,
-            })
-            .add_child(health_bar);
+            });
     }
 }
 

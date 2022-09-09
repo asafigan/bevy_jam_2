@@ -212,16 +212,16 @@ pub struct ProgressBarPrefab {
 }
 
 impl Prefab for ProgressBarPrefab {
-    fn construct(&self, entity: Entity, commands: &mut Commands) {
-        let bar = self.clone();
-        commands.add(move |world: &mut World| {
+    fn construct(self, entity: &mut EntityCommands) {
+        let id = entity.id();
+        entity.commands().add(move |world: &mut World| {
             let (progress_color, background_color, border_color) =
                 world.resource_scope(|_, mut materials: Mut<Assets<StandardMaterial>>| {
                     (
                         materials.add(StandardMaterial {
-                            base_color: bar.color,
+                            base_color: self.color,
                             unlit: true,
-                            alpha_mode: if bar.color.a() < 1.0 {
+                            alpha_mode: if self.color.a() < 1.0 {
                                 AlphaMode::Blend
                             } else {
                                 default()
@@ -229,9 +229,9 @@ impl Prefab for ProgressBarPrefab {
                             ..default()
                         }),
                         materials.add(StandardMaterial {
-                            base_color: bar.background_color,
+                            base_color: self.background_color,
                             unlit: true,
-                            alpha_mode: if bar.background_color.a() < 1.0 {
+                            alpha_mode: if self.background_color.a() < 1.0 {
                                 AlphaMode::Blend
                             } else {
                                 default()
@@ -239,9 +239,9 @@ impl Prefab for ProgressBarPrefab {
                             ..default()
                         }),
                         materials.add(StandardMaterial {
-                            base_color: bar.border_color,
+                            base_color: self.border_color,
                             unlit: true,
-                            alpha_mode: if bar.border_color.a() < 1.0 {
+                            alpha_mode: if self.border_color.a() < 1.0 {
                                 AlphaMode::Blend
                             } else {
                                 default()
@@ -256,7 +256,7 @@ impl Prefab for ProgressBarPrefab {
                 .insert_bundle(PbrBundle {
                     mesh: square_mesh(),
                     material: progress_color,
-                    transform: Transform::from_translation(match bar.position {
+                    transform: Transform::from_translation(match self.position {
                         ProgressBarPosition::Left => Vec3::X / 2.0,
                         ProgressBarPosition::Center => default(),
                         ProgressBarPosition::Right => -Vec3::X / 2.0,
@@ -270,7 +270,7 @@ impl Prefab for ProgressBarPrefab {
             let progress = world
                 .spawn()
                 .insert_bundle(SpatialBundle {
-                    transform: Transform::from_translation(match bar.position {
+                    transform: Transform::from_translation(match self.position {
                         ProgressBarPosition::Left => -Vec3::X / 2.0,
                         ProgressBarPosition::Center => default(),
                         ProgressBarPosition::Right => Vec3::X / 2.0,
@@ -296,7 +296,7 @@ impl Prefab for ProgressBarPrefab {
                 .spawn()
                 .insert_bundle(SpatialBundle {
                     transform: Transform::from_scale(
-                        ((bar.size - bar.border).max(Vec2::ZERO)).extend(1.0),
+                        ((self.size - self.border).max(Vec2::ZERO)).extend(1.0),
                     ),
                     ..default()
                 })
@@ -308,7 +308,7 @@ impl Prefab for ProgressBarPrefab {
                 .insert_bundle(PbrBundle {
                     mesh: square_mesh(),
                     material: border_color,
-                    transform: Transform::from_scale(bar.size.extend(1.0))
+                    transform: Transform::from_scale(self.size.extend(1.0))
                         .with_translation(-Vec3::Z * 0.002),
                     ..default()
                 })
@@ -317,13 +317,13 @@ impl Prefab for ProgressBarPrefab {
                 .id();
 
             world
-                .entity_mut(entity)
+                .entity_mut(id)
                 .insert_bundle(SpatialBundle {
-                    transform: bar.transform,
+                    transform: self.transform,
                     ..default()
                 })
                 .insert(ProgressBar {
-                    percentage: bar.starting_percentage,
+                    percentage: self.starting_percentage,
                     progress,
                 })
                 .push_children(&[inner, border]);
