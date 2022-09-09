@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 pub use bevy::ecs::system::EntityCommands;
 
-pub trait Prefab: Send + Sync + 'static {
+pub trait Prefab {
     fn construct(self, entity: &mut EntityCommands);
 }
 
@@ -41,7 +41,7 @@ pub struct Child(Box<dyn ChildPrefab>);
 
 impl<T> From<T> for Child
 where
-    T: Prefab,
+    T: Prefab + Send + Sync + 'static,
 {
     fn from(element: T) -> Self {
         Child(Box::new(InnerChild(Some(element))))
@@ -65,7 +65,7 @@ pub struct InnerChild<T>(Option<T>);
 // This implementation can only be called once
 impl<T> ChildPrefab for InnerChild<T>
 where
-    T: Prefab,
+    T: Prefab + Send + Sync + 'static,
 {
     fn construct_once(&mut self, entity: &mut EntityCommands) {
         self.0.take().unwrap().construct(entity)
